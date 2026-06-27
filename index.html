@@ -1,0 +1,2035 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>HF Search</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='6.5' cy='6.5' r='5' fill='none' stroke='%236366f1' stroke-width='1.6'/%3E%3Cpath d='M10.5 10.5L14.5 14.5' stroke='%236366f1' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<!-- Anti-FOUC: apply the saved theme before the stylesheet paints.
+     'system' (or unset) leaves it to prefers-color-scheme. -->
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('hfsearch:opt1:theme');
+      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+</script>
+<style>
+/* ============================================================================
+   HF Search — Faceted Console
+   System-aware day/night theme. Light is the default; dark is applied either
+   automatically (prefers-color-scheme) or explicitly via <html data-theme>.
+   A manual data-theme value always wins over the OS preference.
+   ============================================================================ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Theme tokens ─────────────────────────────────────────────────────────
+   LIGHT (default) lives on :root. The DARK token block is duplicated into
+   (a) the prefers-color-scheme media query (auto, unless the user forced light)
+   and (b) :root[data-theme="dark"] (forced). The attribute selector has higher
+   specificity than the bare :root, so a manual choice always overrides the OS. */
+:root {
+  color-scheme: light;
+  --bg:        #ffffff;
+  --surface:   #f7f8fa;
+  --surface2:  #ffffff;
+  --surface3:  #eceef2;
+  --border:    #e4e7ec;
+  --border2:   #d3d8e0;
+  --text:      #1f2430;
+  --text2:     #5b6472;
+  --text3:     #646c78;  /* darkened to clear WCAG AA on tag-pill/surface backgrounds */
+  --accent:    #5b5ef0;
+  --accent2:   #4f46e5;
+  --accent-bg: rgba(91,94,240,.10);
+  --green:     #166534;  /* green-800: 4.5:1+ on tinted badge bg in light mode */
+  --green-bg:  rgba(22,163,74,.10);
+  --red:       #b91c1c;  /* red-700: 4.5:1+ on tinted chip/tag bg in light mode */
+  --red-bg:    rgba(220,38,38,.08);
+  --yellow:    #92400e;  /* amber-800: 4.5:1+ on tinted bg in light mode */
+  --yellow-bg: rgba(217,119,6,.12);
+  --hover:     #f1f3f6;
+  --hidden-bg: rgba(15,18,30,.035);
+  --shadow:    0 6px 20px rgba(30,35,60,.18);
+  --skel:      linear-gradient(90deg, var(--surface3) 25%, var(--hover) 37%, var(--surface3) 63%);
+
+  --mono:      'Cascadia Code','Fira Code','Consolas','Monaco',ui-monospace,monospace;
+  --sans:      ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  --sidebar-w: 272px;
+  --header-h:  44px;
+  --row-h:     52px;
+}
+
+/* dark token values, reused in two places */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg:#0d0d10; --surface:#13131a; --surface2:#1a1a24; --surface3:#22222e;
+    --border:#2a2a38; --border2:#363648;
+    --text:#c8c8d8; --text2:#7878a0; --text3:#8888aa;
+    --accent:#6366f1; --accent2:#818cf8; --accent-bg:rgba(99,102,241,.12);
+    --green:#22c55e; --green-bg:rgba(34,197,94,.10);
+    --red:#f87171; --red-bg:rgba(248,113,113,.10);
+    --yellow:#fbbf24; --yellow-bg:rgba(251,191,36,.10);
+    --hover:#1a1a24; --hidden-bg:rgba(0,0,0,.2); --shadow:0 4px 16px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:#0d0d10; --surface:#13131a; --surface2:#1a1a24; --surface3:#22222e;
+  --border:#2a2a38; --border2:#363648;
+  --text:#c8c8d8; --text2:#7878a0; --text3:#4a4a68;
+  --accent:#6366f1; --accent2:#818cf8; --accent-bg:rgba(99,102,241,.12);
+  --green:#22c55e; --green-bg:rgba(34,197,94,.10);
+  --red:#f87171; --red-bg:rgba(248,113,113,.10);
+  --yellow:#fbbf24; --yellow-bg:rgba(251,191,36,.10);
+  --hover:#1a1a24; --hidden-bg:rgba(0,0,0,.2); --shadow:0 4px 16px rgba(0,0,0,.5);
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 13px; line-height: 1.4; }
+body { transition: background-color .2s ease, color .2s ease; }
+
+/* ─── Layout ─────────────────────────────────────────── */
+#app { display: flex; height: 100vh; overflow: hidden; }
+
+#sidebar {
+  width: var(--sidebar-w);
+  min-width: var(--sidebar-w);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+#sidebar-inner {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 24px;
+}
+
+#sidebar-inner::-webkit-scrollbar { width: 4px; }
+#sidebar-inner::-webkit-scrollbar-track { background: transparent; }
+#sidebar-inner::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+#main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+/* ─── Brand ──────────────────────────────────────────── */
+#brand {
+  display: flex; align-items: center; gap: 7px;
+  padding: 12px 12px 0;
+  font-weight: 700; font-size: 13px; color: var(--text);
+  letter-spacing: -.01em;
+}
+#brand svg { color: var(--accent); }
+#brand .brand-dim { color: var(--text3); font-weight: 500; }
+
+/* ─── Sidebar Search ─────────────────────────────────── */
+#search-wrap {
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+#search-box {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 7px 28px 7px 40px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+#search-box:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+#search-box::placeholder { color: var(--text3); }
+
+.search-icon {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--text3);
+}
+
+#search-clear {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 2px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+#search-clear:hover { color: var(--text); background: var(--surface3); }
+#search-clear.visible { display: flex; }
+
+/* ─── Facet Sections ─────────────────────────────────── */
+.facet-section { border-bottom: 1px solid var(--border); }
+
+.facet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  cursor: pointer;
+  user-select: none;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  color: var(--text2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  transition: color .1s;
+}
+.facet-header:hover { color: var(--text); }
+.facet-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.facet-header > span:first-child { flex: 1; }
+
+.facet-toggle-icon { transition: transform .18s; color: var(--text3); flex-shrink: 0; }
+.facet-section.collapsed .facet-toggle-icon { transform: rotate(-90deg); }
+
+.facet-active-badge {
+  background: var(--accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 8px;
+  letter-spacing: 0;
+  text-transform: none;
+  margin-right: 6px;
+}
+
+.facet-body { padding: 4px 0 8px; }
+.facet-section.collapsed .facet-body { display: none; }
+
+/* Radio / Checkbox rows */
+.facet-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background .1s;
+}
+.facet-option:hover { background: var(--hover); }
+.facet-option input[type=radio],
+.facet-option input[type=checkbox] {
+  accent-color: var(--accent);
+  width: 13px; height: 13px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.facet-option-label { flex: 1; color: var(--text); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.facet-option-count { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+.facet-option.active .facet-option-label { color: var(--accent2); }
+
+/* Pipeline/Library list scroll */
+.facet-scroll-list { max-height: 200px; overflow-y: auto; }
+.facet-scroll-list::-webkit-scrollbar { width: 3px; }
+.facet-scroll-list::-webkit-scrollbar-thumb { background: var(--border2); }
+
+/* ─── Muted / Excluded sections ──────────────────────── */
+.filter-chips { padding: 4px 10px 2px; display: flex; flex-wrap: wrap; gap: 4px; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 2px 6px 2px 7px;
+  font-size: 11px;
+  color: var(--text);
+  max-width: 220px;
+}
+.chip.muted { border-color: rgba(220,38,38,.3); background: var(--red-bg); color: var(--red); }
+.chip.excluded { border-color: rgba(217,119,6,.3); background: var(--yellow-bg); color: var(--yellow); }
+
+.chip-remove {
+  background: none; border: none; cursor: pointer; color: inherit;
+  opacity: .6; padding: 0; display: flex; align-items: center; line-height: 1;
+  border-radius: 1px; font-size: 13px;
+}
+.chip-remove:hover { opacity: 1; }
+.chip-remove:focus-visible { outline: 2px solid var(--accent); }
+
+.chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+
+.inline-add { display: flex; gap: 4px; padding: 6px 10px 4px; align-items: center; }
+
+.inline-add input {
+  flex: 1; min-width: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 4px 7px;
+  outline: none;
+  font-family: var(--sans);
+}
+.inline-add input:focus { border-color: var(--accent); }
+.inline-add input::placeholder { color: var(--text3); }
+
+.inline-add button {
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  color: var(--text2);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 8px;
+  transition: background .1s, color .1s, border-color .1s;
+  white-space: nowrap;
+}
+.inline-add button:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.inline-add button:focus-visible { outline: 2px solid var(--accent); }
+
+.empty-chips { padding: 4px 12px 6px; color: var(--text3); font-size: 11px; font-style: italic; }
+
+/* ─── HF token section ───────────────────────────────── */
+.token-note { padding: 2px 12px 6px; color: var(--text3); font-size: 11px; line-height: 1.5; }
+#token-input { font-family: var(--mono); }
+.token-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 12px 6px; font-size: 11px; }
+.token-status { color: var(--text3); }
+.token-status.on { color: var(--green); }
+.token-links { display: flex; gap: 10px; flex-shrink: 0; }
+.token-links a { color: var(--accent2); text-decoration: none; }
+.token-links a:hover { text-decoration: underline; }
+.linkish { background: none; border: none; color: var(--accent2); cursor: pointer; font-size: 11px; padding: 0; }
+.linkish:hover { text-decoration: underline; }
+.linkish:focus-visible { outline: 2px solid var(--accent); }
+
+/* Reset link */
+#reset-link {
+  display: block;
+  padding: 10px 12px;
+  color: var(--text3);
+  font-size: 11px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  text-align: left;
+  width: 100%;
+  transition: color .1s;
+}
+#reset-link:hover { color: var(--red); }
+#reset-link:focus-visible { outline: 2px solid var(--accent); }
+
+/* ─── Main Header (sticky) ───────────────────────────── */
+#results-header {
+  min-height: var(--header-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 16px;
+  gap: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  flex-shrink: 0;
+}
+
+#result-count { font-size: 12px; color: var(--text2); flex-shrink: 0; white-space: nowrap; }
+#result-count strong { color: var(--text); font-weight: 600; }
+#result-count .total-extra { color: var(--text3); }
+
+#hidden-bar { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+
+#hidden-summary {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text3);
+  overflow: hidden; flex: 1; min-width: 0;
+}
+
+.hidden-count-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.hidden-count-tag.has-muted { border-color: rgba(220,38,38,.3); background: var(--red-bg); color: var(--red); }
+.hidden-count-tag.has-words { border-color: rgba(217,119,6,.3); background: var(--yellow-bg); color: var(--yellow); }
+.hidden-count-tag.total { border-color: rgba(99,102,241,.3); background: var(--accent-bg); color: var(--accent2); }
+
+#show-hidden-btn {
+  background: none;
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 3px 7px;
+  white-space: nowrap;
+  transition: all .1s;
+  flex-shrink: 0;
+}
+#show-hidden-btn:hover { border-color: var(--accent); color: var(--accent2); }
+#show-hidden-btn:focus-visible { outline: 2px solid var(--accent); }
+#show-hidden-btn.active { border-color: var(--accent); color: var(--accent2); background: var(--accent-bg); }
+
+/* ─── Theme toggle (segmented) ───────────────────────── */
+.theme-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface2);
+}
+.theme-toggle button {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 24px;
+  background: none; border: none; cursor: pointer;
+  color: var(--text3);
+  transition: background .1s, color .1s;
+}
+.theme-toggle button + button { border-left: 1px solid var(--border2); }
+.theme-toggle button:hover { color: var(--text); background: var(--hover); }
+.theme-toggle button.active { color: #fff; background: var(--accent); }
+.theme-toggle button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ─── Results: shared grid (sticky header + rows) ────── */
+#results-wrap {
+  flex: 1; overflow-y: auto; overflow-x: auto; position: relative;
+  /* Draggable column widths (persisted to localStorage). */
+  --col-thumb: 46px;
+  --col-name: 380px;
+  --col-downloads: 108px;
+  --col-likes: 84px;
+  --col-tags: 280px;
+  --col-updated: 96px;
+}
+#results-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
+#results-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+#results-list { list-style: none; min-width: max-content; }
+
+.result-row, #results-colhead {
+  display: grid;
+  grid-template-columns:
+    var(--col-thumb) var(--col-name) var(--col-downloads)
+    var(--col-likes) var(--col-tags) var(--col-updated) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+}
+
+/* Column header */
+#results-colhead {
+  position: sticky; top: 0; z-index: 4; min-width: max-content;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 16px; height: 31px;
+  font-size: 10px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--text3); user-select: none;
+}
+.colhead-cell { position: relative; display: flex; align-items: center; height: 31px; min-width: 0; white-space: nowrap; overflow: visible; }
+.colhead-cell > span:not(.col-resizer) { overflow: hidden; text-overflow: ellipsis; }
+.col-resizer {
+  position: absolute; top: 0; right: -7px; width: 14px; height: 100%;
+  cursor: col-resize; z-index: 5; touch-action: none;
+}
+.col-resizer::after {
+  content: ''; position: absolute; top: 7px; bottom: 7px; left: 6px; width: 2px;
+  background: transparent; border-radius: 1px; transition: background .12s;
+}
+.col-resizer:hover::after, .col-resizer.dragging::after { background: var(--accent); }
+body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-select: none !important; }
+
+/* Row */
+.result-row {
+  min-height: var(--row-h);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 16px;
+  position: relative;
+  transition: background .1s;
+  cursor: default;
+}
+.result-row:hover { background: var(--hover); }
+.result-row.is-hidden-item { opacity: .5; background: var(--hidden-bg); }
+.result-row.is-hidden-item:hover { opacity: .75; background: var(--hover); }
+
+/* Thumbnail */
+.row-thumb {
+  width: 40px; height: 40px; border-radius: 5px; overflow: hidden;
+  position: relative; border: 1px solid var(--border); flex-shrink: 0;
+}
+.row-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; position: relative; z-index: 1; }
+.thumb-fallback {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 700; color: #fff; text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(0,0,0,.35); z-index: 0;
+}
+
+/* Identity column */
+.row-identity { min-width: 0; overflow: hidden; }
+.row-id { display: flex; align-items: baseline; gap: 0; font-size: 12px; white-space: nowrap; overflow: hidden; }
+.row-link { display: flex; align-items: baseline; min-width: 0; text-decoration: none; overflow: hidden; }
+.row-link:hover .row-name { color: var(--accent2); text-decoration: underline; }
+.row-author { color: var(--text3); font-size: 12px; flex-shrink: 0; }
+.row-author::after { content: '/'; color: var(--text3); }
+.row-name { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.row-name.gated::after { content: '🔒'; font-size: 9px; margin-left: 3px; vertical-align: middle; }
+
+/* Pipeline + library badges */
+.row-badges { display: flex; gap: 4px; margin-top: 3px; flex-wrap: wrap; }
+.badge {
+  font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 2px;
+  text-transform: uppercase; letter-spacing: .04em; white-space: nowrap;
+}
+.badge-pipeline { background: var(--accent-bg); color: var(--accent2); border: 1px solid rgba(99,102,241,.3); }
+.badge-library { background: var(--surface3); color: var(--text2); border: 1px solid var(--border2); }
+.badge-type { background: var(--green-bg); color: var(--green); border: 1px solid rgba(34,197,94,.25); }
+
+/* Numeric cells (downloads / likes) */
+.cell-num { display: flex; align-items: center; justify-content: flex-end; gap: 3px;
+  font-family: var(--mono); font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; }
+.cell-num .stat-icon { color: var(--text3); flex-shrink: 0; }
+.cell-num.downloads { color: var(--text); }
+
+/* Tags */
+.row-tags { display: flex; gap: 3px; align-items: center; min-width: 0; overflow: hidden; flex-wrap: nowrap; }
+.tag-pill {
+  font-size: 10px; color: var(--text3); background: var(--surface3);
+  border: 1px solid var(--border); border-radius: 2px; padding: 1px 5px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.tag-pill.more { color: var(--text2); }
+
+/* Updated */
+.row-updated { font-size: 11px; color: var(--text3); font-family: var(--mono); white-space: nowrap; overflow: hidden; }
+
+/* Actions (hover-revealed, overlaid at right) */
+.row-actions {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  display: flex; gap: 4px; opacity: 0; pointer-events: none; transition: opacity .12s;
+  padding-left: 24px; background: linear-gradient(90deg, transparent, var(--hover) 22%);
+}
+.result-row:hover .row-actions { opacity: 1; pointer-events: auto; }
+.result-row:focus-within .row-actions { opacity: 1; pointer-events: auto; }
+
+/* ─── Gallery view (large inline thumbnails) ─────────── */
+#results-list.gallery {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(218px, 1fr));
+  gap: 14px; padding: 14px 16px; min-width: 0;
+}
+.result-card {
+  position: relative; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  overflow: hidden; transition: border-color .12s, box-shadow .12s;
+}
+.result-card:hover { border-color: var(--border2); box-shadow: var(--shadow); }
+.result-card.is-hidden-item { opacity: .5; }
+.card-banner { position: relative; display: block; aspect-ratio: 16 / 10; overflow: hidden; text-decoration: none; }
+.card-banner img { width: 100%; height: 100%; object-fit: cover; display: block; position: relative; z-index: 1; }
+.card-banner .thumb-fallback { font-size: 38px; }
+.card-actions { position: absolute; top: 8px; right: 8px; z-index: 3; opacity: 0; transition: opacity .12s; }
+.result-card:hover .card-actions, .result-card:focus-within .card-actions { opacity: 1; }
+.card-actions .act-btn { background: rgba(0,0,0,.55); border-color: rgba(255,255,255,.28); color: #fff; backdrop-filter: blur(2px); }
+.card-actions .act-btn:hover { background: var(--red); border-color: var(--red); color: #fff; }
+.card-body { padding: 9px 11px 11px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.card-title { font-size: 12.5px; line-height: 1.3; color: var(--text); text-decoration: none;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.card-title .row-name { font-weight: 600; }
+.card-title:hover .row-name { color: var(--accent2); text-decoration: underline; }
+.card-stats { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 11px; color: var(--text2); }
+.card-stats .cs { display: inline-flex; align-items: center; gap: 3px; }
+.card-stats .cs-date { margin-left: auto; color: var(--text3); }
+.card-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+.card-tags { display: flex; gap: 4px; flex-wrap: wrap; max-height: 19px; overflow: hidden; }
+
+.act-btn {
+  display: flex; align-items: center; gap: 3px;
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  color: var(--text2);
+  cursor: pointer;
+  font-size: 10px;
+  font-family: var(--sans);
+  padding: 3px 7px;
+  white-space: nowrap;
+  transition: all .1s;
+}
+.act-btn:hover { background: var(--red-bg); border-color: rgba(220,38,38,.4); color: var(--red); }
+.act-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.act-btn.unmute-row { background: var(--red-bg); border-color: rgba(220,38,38,.3); color: var(--red); }
+.act-btn.unmute-row:hover { background: var(--green-bg); border-color: rgba(34,197,94,.4); color: var(--green); }
+
+/* Mute hint */
+#mute-hint {
+  position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+  background: var(--accent); color: #fff; font-size: 10px; padding: 3px 8px;
+  border-radius: 3px; pointer-events: none; white-space: nowrap; z-index: 20;
+  opacity: 0; transition: opacity .3s;
+}
+#mute-hint::before {
+  content: ''; position: absolute; right: 100%; top: 50%; transform: translateY(-50%);
+  border: 5px solid transparent; border-right-color: var(--accent);
+}
+#mute-hint.visible { opacity: 1; }
+
+/* Thumbnail hover preview */
+#thumb-preview {
+  position: fixed; z-index: 200; width: 300px; height: 300px;
+  border-radius: 8px; overflow: hidden; border: 1px solid var(--border2);
+  background: var(--surface2); box-shadow: var(--shadow);
+  opacity: 0; pointer-events: none; display: none;
+}
+#thumb-preview.visible { display: block; opacity: 1; }
+#thumb-preview img { width: 100%; height: 100%; object-fit: contain; background: var(--surface3); display: block; }
+
+/* ─── Skeleton (loading) rows ────────────────────────── */
+.skeleton-row {
+  display: flex; align-items: center; min-height: var(--row-h);
+  border-bottom: 1px solid var(--border); padding: 6px 16px; gap: 10px;
+}
+.skel {
+  background: var(--skel);
+  background-size: 400% 100%;
+  animation: skel-shimmer 1.2s ease-in-out infinite;
+  border-radius: 3px; height: 12px;
+}
+@keyframes skel-shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+
+/* ─── Load-more sentinel ─────────────────────────────── */
+#load-more {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 16px; color: var(--text3); font-size: 12px;
+}
+#load-more.hidden { display: none; }
+#load-more-btn {
+  background: var(--surface2); border: 1px solid var(--border2); color: var(--accent2);
+  border-radius: 5px; padding: 7px 18px; font-size: 12px; font-weight: 600; cursor: pointer;
+  font-family: var(--sans); transition: background .12s, color .12s, border-color .12s;
+}
+#load-more-btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+#load-more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.spinner {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--border2); border-top-color: var(--accent);
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
+#end-marker { padding: 14px 16px; text-align: center; color: var(--text3); font-size: 11px; }
+
+/* ─── Empty / error states ───────────────────────────── */
+.center-state {
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  padding: 56px 20px; text-align: center; color: var(--text3); gap: 10px;
+}
+.center-state.visible { display: flex; }
+.center-state svg { opacity: .35; }
+.center-state h3 { font-size: 15px; color: var(--text2); font-weight: 500; }
+.center-state p { font-size: 12px; max-width: 320px; }
+#error-state svg { color: var(--red); opacity: .8; }
+.retry-btn {
+  margin-top: 6px; background: var(--accent); color: #fff; border: none;
+  border-radius: 4px; padding: 6px 14px; font-size: 12px; cursor: pointer;
+  font-family: var(--sans);
+}
+.retry-btn:hover { filter: brightness(1.08); }
+.retry-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ─── Mobile sidebar toggle ──────────────────────────── */
+#mob-toggle {
+  display: none; position: fixed; bottom: 16px; left: 16px; z-index: 100;
+  background: var(--accent); color: #fff; border: none; border-radius: 4px;
+  padding: 8px 12px; cursor: pointer; font-size: 12px; gap: 5px; align-items: center;
+  box-shadow: var(--shadow);
+}
+
+/* ─── Responsive ─────────────────────────────────────── */
+@media (max-width: 768px) {
+  #sidebar {
+    position: fixed; left: -300px; top: 0; height: 100vh; z-index: 50;
+    transition: left .22s ease; width: 280px; min-width: 280px;
+  }
+  #sidebar.open { left: 0; }
+  #mob-toggle { display: flex; }
+  #mob-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 40; }
+  #mob-overlay.visible { display: block; }
+}
+
+@media (max-width: 520px) {
+  #result-count .total-extra { display: none; }
+}
+
+/* ─── Global scrollbar + focus ───────────────────────── */
+* { scrollbar-color: var(--border2) transparent; scrollbar-width: thin; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- ═══════════ SIDEBAR ═══════════ -->
+  <aside id="sidebar" aria-label="Search filters">
+    <div id="brand">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M10.5 10.5L14.5 14.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <span>HF Search</span>
+    </div>
+    <div id="search-wrap">
+      <label for="search-box" style="position:relative; display:block;">
+        <svg class="search-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <input type="search" id="search-box" placeholder="Search models &amp; datasets…" autocomplete="off" spellcheck="false" aria-label="Search query">
+        <button id="search-clear" aria-label="Clear search" type="button">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </label>
+    </div>
+
+    <div id="sidebar-inner">
+
+      <!-- TYPE -->
+      <div class="facet-section" id="facet-type">
+        <button class="facet-header" aria-expanded="true" data-section="type" type="button">
+          <span>Type</span>
+          <svg class="facet-toggle-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="facet-body">
+          <label class="facet-option active" id="type-opt-both">
+            <input type="radio" name="type" value="both" checked> <span class="facet-option-label">All</span>
+          </label>
+          <label class="facet-option" id="type-opt-model">
+            <input type="radio" name="type" value="model"> <span class="facet-option-label">Models</span>
+            <span class="facet-option-count" id="count-models">—</span>
+          </label>
+          <label class="facet-option" id="type-opt-dataset">
+            <input type="radio" name="type" value="dataset"> <span class="facet-option-label">Datasets</span>
+            <span class="facet-option-count" id="count-datasets">—</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- SORT -->
+      <div class="facet-section" id="facet-sort">
+        <button class="facet-header" aria-expanded="true" data-section="sort" type="button">
+          <span>Sort</span>
+          <svg class="facet-toggle-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="facet-body">
+          <label class="facet-option active">
+            <input type="radio" name="sort" value="trending" checked> <span class="facet-option-label">Trending</span>
+          </label>
+          <label class="facet-option">
+            <input type="radio" name="sort" value="downloads"> <span class="facet-option-label">Most downloads</span>
+          </label>
+          <label class="facet-option">
+            <input type="radio" name="sort" value="likes"> <span class="facet-option-label">Most likes</span>
+          </label>
+          <label class="facet-option">
+            <input type="radio" name="sort" value="updated"> <span class="facet-option-label">Recently updated</span>
+          </label>
+          <label class="facet-option">
+            <input type="radio" name="sort" value="created"> <span class="facet-option-label">Recently created</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- PIPELINE -->
+      <div class="facet-section" id="facet-pipeline">
+        <button class="facet-header" aria-expanded="true" data-section="pipeline" type="button">
+          <span>Pipeline</span>
+          <span id="pipeline-badge" class="facet-active-badge" style="display:none"></span>
+          <svg class="facet-toggle-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="facet-body">
+          <div class="facet-scroll-list" id="pipeline-list" role="group" aria-label="Filter by pipeline"></div>
+        </div>
+      </div>
+
+      <!-- LIBRARY -->
+      <div class="facet-section" id="facet-library">
+        <button class="facet-header" aria-expanded="true" data-section="library" type="button">
+          <span>Library</span>
+          <span id="library-badge" class="facet-active-badge" style="display:none"></span>
+          <svg class="facet-toggle-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="facet-body">
+          <div class="facet-scroll-list" id="library-list" role="group" aria-label="Filter by library"></div>
+        </div>
+      </div>
+
+      <!-- MUTED AUTHORS -->
+      <div class="facet-section" id="facet-muted">
+        <button class="facet-header" aria-expanded="true" data-section="muted" type="button">
+          <span>Muted authors</span>
+          <span id="muted-badge" class="facet-active-badge" style="display:none"></span>
+          <svg class="facet-toggle-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="facet-body">
+          <div class="filter-chips" id="muted-chips" aria-live="polite"></div>
+          <p class="empty-chips" id="muted-empty">No muted authors.</p>
+          <div class="inline-add">
+            <input type="text" id="mute-add-input" placeholder="author name…" autocomplete="off" aria-label="Author to mute">
+            <button id="mute-add-btn" type="button" aria-label="Mute author">Mute</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- EXCLUDED WORDS -->
+      <div class="facet-section" id="facet-excluded">
+        <button class="facet-header" aria-expanded="true" data-section="excluded" type="button">
+          <span>Excluded words/tags</span>
+          <span id="excluded-badge" class="facet-active-badge" style="display:none"></span>
+          <svg class="facet-toggle-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="facet-body">
+          <div class="filter-chips" id="excluded-chips" aria-live="polite"></div>
+          <p class="empty-chips" id="excluded-empty">No excluded words.</p>
+          <div class="inline-add">
+            <input type="text" id="exclude-add-input" placeholder="word or tag…" autocomplete="off" aria-label="Word or tag to exclude">
+            <button id="exclude-add-btn" type="button" aria-label="Add exclusion">Exclude</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- HF API TOKEN -->
+      <div class="facet-section" id="facet-token">
+        <button class="facet-header" aria-expanded="true" data-section="token" type="button">
+          <span>HF API token</span>
+          <span id="token-badge" class="facet-active-badge" style="display:none">set</span>
+          <svg class="facet-toggle-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="facet-body">
+          <p class="token-note">Optional. Raises rate limits and reveals gated / your private repos. Stored only in this browser (localStorage).</p>
+          <div class="inline-add">
+            <input type="password" id="token-input" placeholder="hf_…" autocomplete="off" spellcheck="false" aria-label="Hugging Face access token">
+            <button id="token-save-btn" type="button" aria-label="Save token">Save</button>
+          </div>
+          <div class="token-meta">
+            <span id="token-status" class="token-status">Not set</span>
+            <span class="token-links">
+              <button id="token-clear" type="button" class="linkish" aria-label="Clear token">Clear</button>
+              <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">Get one ↗</a>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <button id="reset-link" type="button" aria-label="Reset all filters">
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="vertical-align:-1px;margin-right:4px"><path d="M2 6a4 4 0 1 0 1-2.65" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 2.5V5.5H5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Reset all filters
+      </button>
+
+    </div><!-- /sidebar-inner -->
+  </aside>
+
+  <!-- ═══════════ MAIN ═══════════ -->
+  <main id="main">
+    <div id="results-header">
+      <div id="result-count" role="status" aria-live="polite"><strong id="count-visible">0</strong> results</div>
+      <div id="hidden-bar">
+        <div id="hidden-summary" aria-label="Hidden results breakdown"></div>
+      </div>
+      <button id="show-hidden-btn" type="button" aria-pressed="false" style="display:none">Show hidden</button>
+      <div class="theme-toggle" id="view-toggle" role="group" aria-label="View mode" style="margin-right:8px">
+        <button data-view="dense" type="button" title="Dense list" aria-label="Dense list view">
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="2.2" rx="1" fill="currentColor"/><rect x="2" y="6.9" width="12" height="2.2" rx="1" fill="currentColor"/><rect x="2" y="10.8" width="12" height="2.2" rx="1" fill="currentColor"/></svg>
+        </button>
+        <button data-view="gallery" type="button" title="Large thumbnails" aria-label="Gallery view">
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5.2" height="5.2" rx="1" fill="currentColor"/><rect x="8.8" y="2" width="5.2" height="5.2" rx="1" fill="currentColor"/><rect x="2" y="8.8" width="5.2" height="5.2" rx="1" fill="currentColor"/><rect x="8.8" y="8.8" width="5.2" height="5.2" rx="1" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="theme-toggle" role="group" aria-label="Color theme">
+        <button data-theme-set="light" type="button" title="Light theme" aria-label="Light theme">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="3.2" stroke="currentColor" stroke-width="1.4"/><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3 3l1.1 1.1M11.9 11.9L13 13M13 3l-1.1 1.1M4.1 11.9L3 13" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
+        <button data-theme-set="system" type="button" title="System theme" aria-label="Match system theme">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="9" rx="1.2" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 14h5M8 11.5V14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
+        <button data-theme-set="dark" type="button" title="Dark theme" aria-label="Dark theme">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="results-wrap" tabindex="-1">
+      <div id="results-colhead" aria-hidden="true">
+        <div class="colhead-cell"></div>
+        <div class="colhead-cell">Name<span class="col-resizer" data-var="--col-name" title="Drag to resize"></span></div>
+        <div class="colhead-cell">Downloads<span class="col-resizer" data-var="--col-downloads" title="Drag to resize"></span></div>
+        <div class="colhead-cell">Likes<span class="col-resizer" data-var="--col-likes" title="Drag to resize"></span></div>
+        <div class="colhead-cell">Tags<span class="col-resizer" data-var="--col-tags" title="Drag to resize"></span></div>
+        <div class="colhead-cell">Updated<span class="col-resizer" data-var="--col-updated" title="Drag to resize"></span></div>
+        <div class="colhead-cell"></div>
+      </div>
+      <ul id="results-list" aria-label="Search results"></ul>
+
+      <div id="load-more" class="hidden" aria-hidden="true">
+        <span class="spinner" aria-hidden="true"></span><span>Loading more…</span>
+      </div>
+      <div id="end-marker" style="display:none">— end of results —</div>
+
+      <div id="empty-state" class="center-state" role="status">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle cx="18" cy="18" r="12" stroke="currentColor" stroke-width="2"/><path d="M27 27L36 36" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M13 18h10M18 13v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".5"/></svg>
+        <h3 id="empty-title">No results found</h3>
+        <p id="empty-desc">Try a different search term or adjust your filters.</p>
+      </div>
+
+      <div id="error-state" class="center-state" role="alert">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle cx="20" cy="20" r="14" stroke="currentColor" stroke-width="2"/><path d="M20 12v9M20 26v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        <h3 id="error-title">Couldn't reach Hugging Face</h3>
+        <p id="error-desc">There was a problem fetching results.</p>
+        <button id="retry-btn" class="retry-btn" type="button">Retry</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Mobile overlay + toggle -->
+<div id="mob-overlay" aria-hidden="true"></div>
+<button id="mob-toggle" type="button" aria-label="Toggle filters" aria-expanded="false">
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="2" y="3" width="12" height="1.5" rx=".75"/><rect x="2" y="7.25" width="12" height="1.5" rx=".75"/><rect x="2" y="11.5" width="12" height="1.5" rx=".75"/></svg>
+  Filters
+</button>
+
+<!-- Mute hint tooltip -->
+<div id="mute-hint" aria-hidden="true">← Hover a row to mute its author</div>
+
+<!-- Floating thumbnail preview (shown on row-thumb hover) -->
+<div id="thumb-preview" aria-hidden="true"><img alt=""></div>
+
+<script>
+/* ============================================================================
+   HF Search — Faceted Console (live)
+   Talks directly to https://huggingface.co/api/{models,datasets} (CORS is open,
+   it echoes the request Origin — works from a local server AND from file://).
+
+   HF's API has no "exclude author" — its author= filter is include-only — so
+   author muting and word/tag exclusion are done CLIENT-SIDE over a growing
+   buffer of fetched results. To keep the page full despite hidden items, we
+   over-fetch additional pages until enough visible rows exist, then lazy-load
+   more on scroll.
+
+   Blocklist persistence: PUT/GET /api/config when a server is present
+   (config.json — editable + committable), otherwise localStorage.
+   ============================================================================ */
+(function () {
+  'use strict';
+
+  /* ── Constants ────────────────────────────────────── */
+  const LS_PREFIX = 'hfsearch:opt1:';
+  const HF_BASE = 'https://huggingface.co/api';
+  const PAGE_SIZE = 50;
+  const TARGET_VISIBLE = 30;
+  const MAX_FILL_ROUNDS = 12;
+  const DISPLAY_TAGS = 3;
+  const SEARCH_DEBOUNCE = 260;
+  const SENTINEL_MARGIN = 400;   // px; keep in sync with the observer rootMargin
+
+  const SORT_PARAM = {
+    trending: 'trendingScore',
+    downloads: 'downloads',
+    likes: 'likes',
+    updated: 'lastModified',
+    created: 'createdAt',
+  };
+  const VALID_SORTS = Object.keys(SORT_PARAM);
+
+  const HIDDEN_TAG_PREFIXES = ['region:', 'size_categories:', 'format:', 'modality:', 'library:', 'base_model:', 'arxiv:', 'doi:', 'license:'];
+  const HIDDEN_TAGS = new Set(['safetensors', 'en', 'autotrain_compatible', 'endpoints_compatible', 'text-generation-inference', 'conversational']);
+
+  /* ── State ────────────────────────────────────────── */
+  const state = {
+    query: '',
+    type: 'both',
+    sort: 'trending',
+    pipelines: new Set(),
+    libraries: new Set(),
+    muted: new Set(),
+    excluded: new Set(),
+    showHidden: false,
+    collapsed: new Set(),
+    view: 'dense',     // 'dense' | 'gallery'
+  };
+
+  function freshBuf() {
+    return { items: [], nextUrl: null, done: false, loading: false, error: null, started: false };
+  }
+  const buffers = { model: freshBuf(), dataset: freshBuf() };
+
+  let generation = 0;
+  let aborter = null;
+  let hfToken = '';
+  let io = null;
+  let rateLimitedUntil = 0;     // epoch ms; auto-pagination backs off until then
+  let rlTimer = null;
+  let renderedIds = new Set();  // ids currently in the DOM list (append-only paging)
+
+  /* ── DOM helpers ──────────────────────────────────── */
+  const byId = (id) => document.getElementById(id);
+  const qsa = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+
+  /* ── localStorage helpers ─────────────────────────── */
+  function lsGet(k) { try { return JSON.parse(localStorage.getItem(LS_PREFIX + k)); } catch { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(LS_PREFIX + k, JSON.stringify(v)); } catch {} }
+  function lsGetRaw(k) { try { return localStorage.getItem(LS_PREFIX + k); } catch { return null; } }
+  function lsSetRaw(k, v) { try { localStorage.setItem(LS_PREFIX + k, v); } catch {} }
+
+  /* ── Config ───────────────────────────────────────── */
+  function normalizeType(t) { return t === 'model' || t === 'models' ? 'model' : t === 'dataset' || t === 'datasets' ? 'dataset' : 'both'; }
+  function normalizeSort(s) { return VALID_SORTS.includes(s) ? s : 'trending'; }
+
+  function loadConfig() {
+    // Single-file build: everything persists to this browser's localStorage.
+    const m = lsGet('muted'); if (Array.isArray(m)) m.forEach((a) => state.muted.add(a));
+    const e = lsGet('excluded'); if (Array.isArray(e)) e.forEach((w) => state.excluded.add(w));
+    const sp = lsGetRaw('sort'); if (sp) state.sort = normalizeSort(sp);
+    const tp = lsGetRaw('type'); if (tp) state.type = normalizeType(tp);
+    hfToken = lsGetRaw('token') || '';
+    const vw = lsGetRaw('view'); if (vw === 'gallery' || vw === 'dense') state.view = vw;
+    const col = lsGet('collapsed'); if (Array.isArray(col)) col.forEach((s) => state.collapsed.add(s));
+  }
+
+  function saveBlocklist() {
+    lsSet('muted', [...state.muted]);
+    lsSet('excluded', [...state.excluded]);
+  }
+  function savePrefs() {
+    lsSetRaw('sort', state.sort);
+    lsSetRaw('type', state.type);
+    lsSet('collapsed', [...state.collapsed]);
+  }
+
+  /* ── Utilities ────────────────────────────────────── */
+  function fmtNum(n) {
+    if (n === undefined || n === null) return '0';
+    if (n >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
+    return n.toLocaleString();
+  }
+  function relDate(ds) {
+    if (!ds) return '—';
+    const d = new Date(ds);
+    if (isNaN(d.getTime())) return '—';
+    const diffDays = Math.floor((Date.now() - d.getTime()) / 86400000);
+    if (diffDays <= 0) return 'today';
+    if (diffDays === 1) return '1 day ago';
+    if (diffDays < 30) return diffDays + ' days ago';
+    const mo = Math.floor(diffDays / 30);
+    if (mo === 1) return '1 mo ago';
+    if (mo < 12) return mo + ' mo ago';
+    const yr = Math.floor(diffDays / 365);
+    return yr === 1 ? '1 yr ago' : yr + ' yr ago';
+  }
+  function escHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function dt(x) { const d = x ? new Date(x).getTime() : 0; return isNaN(d) ? 0 : d; }
+  function debounce(fn, delay) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), delay); }; }
+
+  /* ── API ──────────────────────────────────────────── */
+  function mapItem(raw, type) {
+    const id = raw.id || raw.modelId || '';
+    const slash = id.indexOf('/');
+    const author = raw.author || (slash >= 0 ? id.slice(0, slash) : id);
+    const name = slash >= 0 ? id.slice(slash + 1) : id;
+    let description = typeof raw.description === 'string' ? raw.description : '';
+    // Note: the models list API returns no description (even full=true); only
+    // datasets do. So model word-exclusion matches name/id/tags only.
+    if (!description && raw.cardData && typeof raw.cardData.description === 'string') description = raw.cardData.description;
+    // First image file in the repo (image/video models ship example images) —
+    // makes a far nicer thumbnail than the generic social card.
+    let thumbFile = null;
+    if (Array.isArray(raw.siblings)) {
+      let first = null;
+      for (const s of raw.siblings) {
+        const f = s && s.rfilename;
+        if (f && /\.(png|jpe?g|webp|gif|avif)$/i.test(f)) {
+          if (first === null) first = f;
+          if (/(sample|example|preview|teaser|header|thumb|grid|image)/i.test(f)) { first = f; break; }
+        }
+      }
+      thumbFile = first;
+    }
+    return {
+      id, author, name, type,
+      downloads: raw.downloads || 0,
+      likes: raw.likes || 0,
+      trendingScore: raw.trendingScore || 0,
+      tags: Array.isArray(raw.tags) ? raw.tags : [],
+      pipeline_tag: raw.pipeline_tag || null,
+      library_name: raw.library_name || null,
+      description,
+      createdAt: raw.createdAt || null,
+      lastModified: raw.lastModified || raw.createdAt || null,
+      gated: !!raw.gated,
+      thumbFile,
+    };
+  }
+
+  // Thumbnail URL: example image when present, else HF's social card.
+  function thumbUrl(item) {
+    if (item.thumbFile) {
+      const base = item.type === 'dataset' ? 'datasets/' + item.id : item.id;
+      return 'https://huggingface.co/' + base + '/resolve/main/' + item.thumbFile.split('/').map(encodeURIComponent).join('/');
+    }
+    const kind = item.type === 'dataset' ? 'datasets' : 'models';
+    return 'https://cdn-thumbnails.huggingface.co/social-thumbnails/' + kind + '/' + item.id + '.png';
+  }
+  // Deterministic gradient placeholder keyed to pipeline/type.
+  function gradientFor(item) {
+    const key = item.pipeline_tag || item.type || 'x';
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 360;
+    return `linear-gradient(135deg, hsl(${h} 52% 52%), hsl(${(h + 42) % 360} 56% 42%))`;
+  }
+
+  function buildUrl(type) {
+    const endpoint = type === 'model' ? 'models' : 'datasets';
+    const p = new URLSearchParams();
+    if (state.query) p.set('search', state.query);
+    p.set('sort', SORT_PARAM[state.sort] || 'trendingScore');
+    p.set('direction', '-1');
+    p.set('limit', String(PAGE_SIZE));
+    p.set('full', 'true');
+    return `${HF_BASE}/${endpoint}?${p.toString()}`;
+  }
+
+  function parseNextUrl(link) {
+    if (!link) return null;
+    for (const part of link.split(',')) {
+      const m = part.match(/<([^>]+)>\s*;\s*rel="?next"?/);
+      if (m) return m[1];
+    }
+    return null;
+  }
+
+  function isRateLimited() { return Date.now() < rateLimitedUntil; }
+
+  function scheduleRateLimitRecovery(ms) {
+    if (rlTimer) clearTimeout(rlTimer);
+    const myGen = generation;
+    rlTimer = setTimeout(() => {
+      if (myGen !== generation) return;
+      ['model', 'dataset'].forEach((s) => { if (buffers[s].error && buffers[s].error.rateLimited) buffers[s].error = null; });
+      updatePaginationUI();
+      maybeContinue();
+    }, ms + 250);
+  }
+
+  async function fetchNext(type) {
+    const buf = buffers[type];
+    if (buf.loading || buf.done || buf.error) return;
+    buf.loading = true; buf.started = true;
+    const myGen = generation;
+    const signal = aborter ? aborter.signal : undefined;
+    const url = buf.nextUrl || buildUrl(type);
+    const headers = { Accept: 'application/json' };
+    if (hfToken) headers.Authorization = 'Bearer ' + hfToken;
+    try {
+      const res = await fetch(url, { headers, signal });
+      if (myGen !== generation) return;
+      if (res.status === 429) {
+        const ra = parseInt(res.headers.get('retry-after') || '', 10);
+        const sec = Math.min(Number.isFinite(ra) && ra > 0 ? ra : 30, 120);
+        rateLimitedUntil = Date.now() + sec * 1000;
+        buf.error = Object.assign(new Error('Rate limited by Hugging Face'), { rateLimited: true });
+        scheduleRateLimitRecovery(sec * 1000);
+        return;
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      if (myGen !== generation) return;
+      const items = (Array.isArray(data) ? data : []).map((r) => mapItem(r, type));
+      buf.items.push(...items);
+      const next = parseNextUrl(res.headers.get('link'));
+      if (next && items.length > 0) buf.nextUrl = next;
+      else { buf.done = true; buf.nextUrl = null; }
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      if (myGen === generation) buf.error = err || new Error('fetch failed');
+    } finally {
+      if (myGen === generation) buf.loading = false;
+    }
+  }
+
+  function activeStreams() {
+    if (state.type === 'model') return ['model'];
+    if (state.type === 'dataset') return ['dataset'];
+    return ['model', 'dataset'];
+  }
+  function loadedItems() {
+    let out = [];
+    for (const s of activeStreams()) out = out.concat(buffers[s].items);
+    return out;
+  }
+  function streamHasMore(s) { return !buffers[s].done && !buffers[s].error; }
+  function hasMore() { return activeStreams().some(streamHasMore); }
+  function anyLoading() { return activeStreams().some((s) => buffers[s].loading); }
+
+  /* ── Reset + load orchestration ───────────────────── */
+  function resetAndFetch() {
+    generation++;
+    if (aborter) aborter.abort();
+    aborter = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    buffers.model = freshBuf();
+    buffers.dataset = freshBuf();
+    state.showHidden = false;
+    renderedIds = new Set();
+    rateLimitedUntil = 0;            // explicit user action clears any backoff
+    hideError();
+    showSkeletonRows();
+    loadInitial();
+  }
+
+  async function loadInitial() {
+    const myGen = generation;
+    await fillToTarget(myGen);
+    if (myGen !== generation) return;
+    const allFailed = activeStreams().every((s) => buffers[s].error) && loadedItems().length === 0;
+    if (allFailed) { showError(); return; }
+    render();
+    maybeShowHint();
+  }
+
+  async function fillToTarget(myGen) {
+    let rounds = 0;
+    while (rounds++ < MAX_FILL_ROUNDS) {
+      const streams = activeStreams().filter((s) => streamHasMore(s) && !buffers[s].loading);
+      if (!streams.length) break;
+      await Promise.allSettled(streams.map((s) => fetchNext(s)));
+      if (myGen !== generation) return;
+      if (visibleCount() >= TARGET_VISIBLE) break;
+    }
+  }
+
+  async function loadMore() {
+    if (!hasMore() || anyLoading() || isRateLimited()) return;
+    const myGen = generation;
+    const streams = activeStreams().filter((s) => streamHasMore(s) && !buffers[s].loading);
+    if (!streams.length) return;
+    const ps = streams.map((s) => fetchNext(s)); // sets buf.loading synchronously
+    updatePaginationUI();
+    await Promise.allSettled(ps);
+    if (myGen !== generation) return;
+    appendRender();
+    updatePaginationUI();
+    maybeContinue();
+  }
+
+  // Re-arm pagination when the sentinel stays within view after a render — an
+  // IntersectionObserver only fires on a crossing, so a page that's mostly
+  // filtered out (few short rows added) would otherwise wedge silently.
+  function sentinelInZone() {
+    const lm = byId('load-more');
+    const wrap = byId('results-wrap');
+    if (!lm || !wrap || lm.classList.contains('hidden')) return false;
+    const lr = lm.getBoundingClientRect();
+    const wr = wrap.getBoundingClientRect();
+    return lr.top <= wr.bottom + SENTINEL_MARGIN;
+  }
+  function maybeContinue() {
+    if (!hasMore() || anyLoading() || isRateLimited()) return;
+    if (sentinelInZone()) requestAnimationFrame(() => loadMore());
+  }
+
+  /* ── Filtering ────────────────────────────────────── */
+  function matchesType(item) { return state.type === 'both' ? true : item.type === state.type; }
+  function matchesPipeline(item) { return state.pipelines.size === 0 || state.pipelines.has(item.pipeline_tag); }
+  function matchesLibrary(item) { return state.libraries.size === 0 || state.libraries.has(item.library_name); }
+  function isHiddenByMute(item) { return state.muted.has(item.author); }
+  function isHiddenByWords(item) {
+    if (state.excluded.size === 0) return false;
+    for (const w of state.excluded) {
+      const lw = w.toLowerCase();
+      if (item.name.toLowerCase().includes(lw)) return true;
+      if (item.id.toLowerCase().includes(lw)) return true;
+      if (item.tags && item.tags.some((t) => t.toLowerCase().includes(lw))) return true;
+      if (item.description && item.description.toLowerCase().includes(lw)) return true;
+    }
+    return false;
+  }
+  function sortItems(items) {
+    const s = state.sort;
+    return items.slice().sort((a, b) => {
+      if (s === 'downloads') return b.downloads - a.downloads;
+      if (s === 'likes') return b.likes - a.likes;
+      if (s === 'updated') return dt(b.lastModified) - dt(a.lastModified);
+      if (s === 'created') return dt(b.createdAt) - dt(a.createdAt);
+      return b.trendingScore - a.trendingScore;
+    });
+  }
+
+  function dedupedLoaded() {
+    const seen = new Set();
+    const out = [];
+    for (const it of loadedItems()) { if (!seen.has(it.id)) { seen.add(it.id); out.push(it); } }
+    return out;
+  }
+  function getFilteredResults() {
+    const base = dedupedLoaded().filter((it) => matchesType(it) && matchesPipeline(it) && matchesLibrary(it));
+    return sortItems(base).map((item) => ({
+      item,
+      hiddenByMute: isHiddenByMute(item),
+      hiddenByWord: isHiddenByWords(item),
+    }));
+  }
+  function visibleCount() {
+    return getFilteredResults().filter((r) => !r.hiddenByMute && !r.hiddenByWord).length;
+  }
+
+  function computeView() {
+    const rows = getFilteredResults();
+    const visible = rows.filter((r) => !r.hiddenByMute && !r.hiddenByWord);
+    const hiddenMute = rows.filter((r) => r.hiddenByMute && !r.hiddenByWord).length;
+    const hiddenWord = rows.filter((r) => !r.hiddenByMute && r.hiddenByWord).length;
+    const hiddenBoth = rows.filter((r) => r.hiddenByMute && r.hiddenByWord).length;
+    const mutedAuthors = new Set(rows.filter((r) => r.hiddenByMute).map((r) => r.item.author));
+    return {
+      rows, visible,
+      display: state.showHidden ? rows : visible,
+      totalHidden: hiddenMute + hiddenWord + hiddenBoth,
+      hiddenByMuteCount: hiddenMute + hiddenBoth,
+      hiddenByWordCount: hiddenWord + hiddenBoth,
+      mutedAuthorsCount: mutedAuthors.size,
+    };
+  }
+
+  /* ── Render ───────────────────────────────────────── */
+  function renderMeta(view) {
+    // Facets: count each from results filtered by the OTHER facet (not itself),
+    // so multi-select keeps every option visible.
+    const all = dedupedLoaded();
+    const pCounts = {}, lCounts = {};
+    all.forEach((it) => {
+      if (matchesType(it) && matchesLibrary(it) && it.pipeline_tag) pCounts[it.pipeline_tag] = (pCounts[it.pipeline_tag] || 0) + 1;
+      if (matchesType(it) && matchesPipeline(it) && it.library_name) lCounts[it.library_name] = (lCounts[it.library_name] || 0) + 1;
+    });
+    renderFacetList('pipeline-list', pCounts, state.pipelines, 'pipeline-badge');
+    renderFacetList('library-list', lCounts, state.libraries, 'library-badge');
+
+    byId('count-models').textContent = typeCountLabel('model');
+    byId('count-datasets').textContent = typeCountLabel('dataset');
+
+    byId('result-count').innerHTML =
+      `<strong>${view.visible.length}</strong> shown<span class="total-extra"> · ${view.rows.length} loaded</span>`;
+
+    const summary = byId('hidden-summary');
+    const showHiddenBtn = byId('show-hidden-btn');
+    if (view.totalHidden > 0) {
+      let parts = `<span class="hidden-count-tag total">${view.totalHidden} hidden</span>`;
+      if (view.hiddenByMuteCount > 0) {
+        const n = view.mutedAuthorsCount;
+        parts += `<span class="hidden-count-tag has-muted">${view.hiddenByMuteCount} by ${n} muted author${n !== 1 ? 's' : ''}</span>`;
+      }
+      if (view.hiddenByWordCount > 0) parts += `<span class="hidden-count-tag has-words">${view.hiddenByWordCount} by word filters</span>`;
+      summary.innerHTML = parts;
+      showHiddenBtn.style.display = '';
+      showHiddenBtn.textContent = state.showHidden ? 'Hide filtered' : 'Show hidden';
+      showHiddenBtn.setAttribute('aria-pressed', state.showHidden ? 'true' : 'false');
+      showHiddenBtn.classList.toggle('active', state.showHidden);
+    } else {
+      summary.innerHTML = '';
+      showHiddenBtn.style.display = 'none';
+    }
+  }
+
+  function updateEmptyState(view) {
+    const empty = byId('empty-state');
+    if (renderedIds.size > 0) { empty.classList.remove('visible'); return; }
+    const t = byId('empty-title');
+    const d = byId('empty-desc');
+    if (view.rows.length > 0 && !state.showHidden) {
+      t.textContent = 'All results filtered out';
+      d.textContent = `${view.totalHidden} result${view.totalHidden !== 1 ? 's are' : ' is'} hidden by your mute/exclude filters. Click "Show hidden" to reveal them.`;
+    } else if (state.query) {
+      t.textContent = 'No results found';
+      d.textContent = `No ${typeNoun()} match "${state.query}".`;
+    } else {
+      t.textContent = 'No results';
+      d.textContent = 'Try adjusting your filters.';
+    }
+    empty.classList.add('visible');
+  }
+
+  // Full rebuild — used on any filter/sort/search/state change.
+  function hardRender() {
+    const view = computeView();
+    renderMeta(view);
+    const list = byId('results-list');
+    list.innerHTML = '';
+    renderedIds = new Set();
+    if (view.display.length) {
+      const frag = document.createDocumentFragment();
+      view.display.forEach((r) => { renderedIds.add(r.item.id); frag.appendChild(buildItem(r)); });
+      list.appendChild(frag);
+    }
+    updateEmptyState(view);
+  }
+
+  // Append-only — used on pagination so existing rows (and scroll) don't move.
+  function appendRender() {
+    const view = computeView();
+    renderMeta(view);
+    const list = byId('results-list');
+    const frag = document.createDocumentFragment();
+    let added = 0;
+    for (const r of view.display) {
+      if (renderedIds.has(r.item.id)) continue;
+      renderedIds.add(r.item.id);
+      frag.appendChild(buildItem(r));
+      added++;
+    }
+    if (added) list.appendChild(frag);
+    updateEmptyState(view);
+  }
+
+  function render() {
+    hideError();
+    hardRender();
+    renderChips();
+    updatePaginationUI();
+    maybeContinue();
+  }
+
+  function typeNoun() {
+    if (state.type === 'model') return 'models';
+    if (state.type === 'dataset') return 'datasets';
+    return 'models or datasets';
+  }
+  function typeCountLabel(t) {
+    const buf = buffers[t];
+    const active = activeStreams().includes(t);
+    if (!active && buf.items.length === 0) return '—';
+    return buf.done ? String(buf.items.length) : buf.items.length + '+';
+  }
+
+  function buildItem(r) { return state.view === 'gallery' ? buildCard(r) : buildRow(r); }
+
+  function buildCard(r) {
+    const { item, hiddenByMute, hiddenByWord } = r;
+    const isHidden = hiddenByMute || hiddenByWord;
+    const li = document.createElement('li');
+    li.className = 'result-card' + (isHidden ? ' is-hidden-item' : '');
+    li.dataset.author = item.author;
+    li.dataset.id = item.id;
+
+    const displayableTags = (item.tags || []).filter((t) =>
+      !HIDDEN_TAG_PREFIXES.some((p) => t.startsWith(p)) && !HIDDEN_TAGS.has(t)
+    );
+    const shownTags = displayableTags.slice(0, DISPLAY_TAGS);
+    const moreTags = displayableTags.length - shownTags.length;
+    const tagPills = shownTags.map((t) => `<span class="tag-pill">${escHtml(t)}</span>`).join('') +
+      (moreTags > 0 ? `<span class="tag-pill more">+${moreTags}</span>` : '');
+
+    let badges = '';
+    if (item.pipeline_tag) badges += `<span class="badge badge-pipeline">${escHtml(item.pipeline_tag.replace(/-/g, ' '))}</span>`;
+    if (item.library_name) badges += `<span class="badge badge-library">${escHtml(item.library_name)}</span>`;
+    if (item.type === 'dataset') badges += `<span class="badge badge-type">dataset</span>`;
+
+    const isMuted = state.muted.has(item.author);
+    const muteLabel = isMuted ? 'Unmute' : 'Mute author';
+    const muteBtnClass = isMuted ? 'act-btn unmute-row' : 'act-btn';
+    const href = item.type === 'dataset'
+      ? 'https://huggingface.co/datasets/' + item.id
+      : 'https://huggingface.co/' + item.id;
+    const tu = thumbUrl(item);
+    const initial = escHtml(item.name[0] || item.author[0] || '?');
+
+    li.innerHTML = `
+      <a class="card-banner" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" title="${escHtml(item.id)}" style="background:${gradientFor(item)}">
+        <span class="thumb-fallback">${initial}</span>
+        <img loading="lazy" decoding="async" alt="" src="${escHtml(tu)}">
+      </a>
+      <div class="card-actions">
+        <button type="button" class="${muteBtnClass}" data-action="mute" data-author="${escHtml(item.author)}" aria-label="${muteLabel} ${escHtml(item.author)}">
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="4" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 10.5c0-2.5 2-4 4.5-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>${isMuted ? '<path d="M9 7l2 2M11 7l-2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>' : '<path d="M8 8l3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>'}</svg>
+          ${muteLabel}
+        </button>
+      </div>
+      <div class="card-body">
+        <a class="card-title" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" title="${escHtml(item.id)}">
+          <span class="row-author">${escHtml(item.author)}</span><span class="row-name${item.gated ? ' gated' : ''}">${escHtml(item.name)}</span>
+        </a>
+        <div class="card-stats">
+          <span class="cs" title="Downloads"><svg class="stat-icon" width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 2v7M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>${fmtNum(item.downloads)}</span>
+          <span class="cs" title="Likes"><svg class="stat-icon" width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 11s-5-3.5-5-7a3 3 0 0 1 5-2.2A3 3 0 0 1 12 4c0 3.5-5 7-5 7z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>${fmtNum(item.likes)}</span>
+          <span class="cs cs-date" title="Updated ${escHtml(item.lastModified || '')}">${relDate(item.lastModified)}</span>
+        </div>
+        <div class="card-badges">${badges}</div>
+        <div class="card-tags" aria-label="Tags">${tagPills}</div>
+      </div>
+    `;
+
+    const muteBtn = li.querySelector('[data-action="mute"]');
+    muteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const author = muteBtn.dataset.author;
+      if (state.muted.has(author)) state.muted.delete(author);
+      else state.muted.add(author);
+      saveBlocklist();
+      render();
+    });
+    const cardImg = li.querySelector('.card-banner img');
+    if (cardImg) cardImg.addEventListener('error', () => cardImg.remove());
+    return li;
+  }
+
+  function buildRow(r) {
+    const { item, hiddenByMute, hiddenByWord } = r;
+    const isHidden = hiddenByMute || hiddenByWord;
+    const li = document.createElement('li');
+    li.className = 'result-row' + (isHidden ? ' is-hidden-item' : '');
+    li.dataset.author = item.author;
+    li.dataset.id = item.id;
+
+    const displayableTags = (item.tags || []).filter((t) =>
+      !HIDDEN_TAG_PREFIXES.some((p) => t.startsWith(p)) && !HIDDEN_TAGS.has(t)
+    );
+    const shownTags = displayableTags.slice(0, DISPLAY_TAGS);
+    const moreTags = displayableTags.length - shownTags.length;
+    const tagPills = shownTags.map((t) => `<span class="tag-pill">${escHtml(t)}</span>`).join('') +
+      (moreTags > 0 ? `<span class="tag-pill more">+${moreTags}</span>` : '');
+
+    let badges = '';
+    if (item.pipeline_tag) badges += `<span class="badge badge-pipeline">${escHtml(item.pipeline_tag.replace(/-/g, ' '))}</span>`;
+    if (item.library_name) badges += `<span class="badge badge-library">${escHtml(item.library_name)}</span>`;
+    if (item.type === 'dataset') badges += `<span class="badge badge-type">dataset</span>`;
+
+    const isMuted = state.muted.has(item.author);
+    const muteLabel = isMuted ? 'Unmute' : 'Mute author';
+    const muteBtnClass = isMuted ? 'act-btn unmute-row' : 'act-btn';
+    const href = item.type === 'dataset'
+      ? 'https://huggingface.co/datasets/' + item.id
+      : 'https://huggingface.co/' + item.id;
+    const tu = thumbUrl(item);
+    const initial = escHtml(item.name[0] || item.author[0] || '?');
+
+    li.innerHTML = `
+      <div class="row-thumb" data-thumb="${escHtml(tu)}" style="background:${gradientFor(item)}">
+        <span class="thumb-fallback">${initial}</span>
+        <img loading="lazy" decoding="async" alt="" src="${escHtml(tu)}">
+      </div>
+      <div class="row-identity">
+        <a class="row-link" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" title="${escHtml(item.id)}">
+          <span class="row-id">
+            <span class="row-author">${escHtml(item.author)}</span>
+            <span class="row-name${item.gated ? ' gated' : ''}">${escHtml(item.name)}</span>
+          </span>
+        </a>
+        <div class="row-badges">${badges}</div>
+      </div>
+      <div class="cell-num downloads" title="Downloads">
+        <svg class="stat-icon" width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 2v7M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>${fmtNum(item.downloads)}</span>
+      </div>
+      <div class="cell-num likes" title="Likes">
+        <svg class="stat-icon" width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 11s-5-3.5-5-7a3 3 0 0 1 5-2.2A3 3 0 0 1 12 4c0 3.5-5 7-5 7z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        <span>${fmtNum(item.likes)}</span>
+      </div>
+      <div class="row-tags" aria-label="Tags">${tagPills}</div>
+      <div class="row-updated" title="Last modified ${escHtml(item.lastModified || '')}">${relDate(item.lastModified)}</div>
+      <div class="row-actions" role="group" aria-label="Row actions">
+        <button type="button" class="${muteBtnClass}" data-action="mute" data-author="${escHtml(item.author)}" aria-label="${muteLabel} ${escHtml(item.author)}">
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="4" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 10.5c0-2.5 2-4 4.5-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>${isMuted ? '<path d="M9 7l2 2M11 7l-2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>' : '<path d="M8 8l3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>'}</svg>
+          ${muteLabel}
+        </button>
+      </div>
+    `;
+
+    const muteBtn = li.querySelector('[data-action="mute"]');
+    muteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const author = muteBtn.dataset.author;
+      if (state.muted.has(author)) state.muted.delete(author);
+      else state.muted.add(author);
+      saveBlocklist();
+      render();
+    });
+
+    const thumbEl = li.querySelector('.row-thumb');
+    const thumbImg = thumbEl.querySelector('img');
+    thumbImg.addEventListener('error', () => thumbImg.remove()); // reveal gradient fallback
+    thumbEl.addEventListener('mouseenter', () => showThumbPreview(thumbEl));
+    thumbEl.addEventListener('mouseleave', hideThumbPreview);
+    return li;
+  }
+
+  function renderFacetList(containerId, counts, activeSet, badgeId) {
+    const container = byId(containerId);
+    const badge = byId(badgeId);
+    if (!container) return;
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    activeSet.forEach((v) => { if (!counts[v]) entries.push([v, 0]); });
+
+    container.innerHTML = '';
+    if (entries.length === 0) {
+      container.innerHTML = '<div style="padding:4px 12px 6px;color:var(--text3);font-size:11px;font-style:italic;">None in current results</div>';
+      if (badge) badge.style.display = 'none';
+      return;
+    }
+    entries.forEach(([val, count]) => {
+      const isActive = activeSet.has(val);
+      const label = document.createElement('label');
+      label.className = 'facet-option' + (isActive ? ' active' : '');
+      label.innerHTML = `
+        <input type="checkbox" ${isActive ? 'checked' : ''} aria-label="Filter by ${escHtml(val)}">
+        <span class="facet-option-label" title="${escHtml(val)}">${escHtml(val)}</span>
+        <span class="facet-option-count">${count}</span>
+      `;
+      const cb = label.querySelector('input');
+      cb.addEventListener('change', () => {
+        if (cb.checked) activeSet.add(val); else activeSet.delete(val);
+        render();
+      });
+      container.appendChild(label);
+    });
+    if (badge) {
+      if (activeSet.size > 0) { badge.textContent = activeSet.size; badge.style.display = ''; }
+      else badge.style.display = 'none';
+    }
+  }
+
+  function renderChips() {
+    renderChipSet('muted-chips', 'muted-empty', 'muted-badge', state.muted, 'muted', (author) => {
+      state.muted.delete(author); saveBlocklist(); render();
+    });
+    renderChipSet('excluded-chips', 'excluded-empty', 'excluded-badge', state.excluded, 'excluded', (word) => {
+      state.excluded.delete(word); saveBlocklist(); render();
+    });
+  }
+  function renderChipSet(containerId, emptyId, badgeId, set, chipClass, onRemove) {
+    const container = byId(containerId);
+    const empty = byId(emptyId);
+    const badge = byId(badgeId);
+    if (!container) return;
+    container.innerHTML = '';
+    if (set.size === 0) {
+      if (empty) empty.style.display = '';
+      if (badge) badge.style.display = 'none';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    if (badge) { badge.textContent = set.size; badge.style.display = ''; }
+    set.forEach((val) => {
+      const chip = document.createElement('span');
+      chip.className = 'chip ' + chipClass;
+      chip.innerHTML = `<span class="chip-label" title="${escHtml(val)}">${escHtml(val)}</span><button type="button" class="chip-remove" aria-label="Remove ${escHtml(val)}" title="Remove">×</button>`;
+      chip.querySelector('.chip-remove').addEventListener('click', () => onRemove(val));
+      container.appendChild(chip);
+    });
+  }
+
+  /* ── Pagination / loading UI ──────────────────────── */
+  function showSkeletonRows() {
+    const list = byId('results-list');
+    byId('empty-state').classList.remove('visible');
+    byId('end-marker').style.display = 'none';
+    byId('load-more').classList.add('hidden');
+    byId('result-count').innerHTML = `<strong>…</strong> shown`;
+    byId('hidden-summary').innerHTML = '';
+    byId('show-hidden-btn').style.display = 'none';
+    let html = '';
+    if (state.view === 'gallery') {
+      for (let i = 0; i < 8; i++) {
+        html += `<li class="result-card">
+          <div class="card-banner"><div class="skel" style="width:100%;height:100%"></div></div>
+          <div class="card-body">
+            <div class="skel" style="width:85%"></div>
+            <div class="skel" style="width:55%;height:9px"></div>
+            <div class="skel" style="width:70%;height:9px"></div>
+          </div>
+        </li>`;
+      }
+    } else {
+      for (let i = 0; i < 8; i++) {
+        html += `<li class="skeleton-row">
+          <div class="skel" style="width:40px;height:40px;border-radius:5px;flex-shrink:0"></div>
+          <div class="skel" style="width:${180 + (i * 17) % 120}px"></div>
+          <div class="skel" style="width:54px"></div>
+          <div class="skel" style="width:40px"></div>
+          <div class="skel" style="flex:1;max-width:200px"></div>
+          <div class="skel" style="width:54px"></div>
+        </li>`;
+      }
+    }
+    list.innerHTML = html;
+  }
+  function updatePaginationUI() {
+    const lm = byId('load-more');
+    const end = byId('end-marker');
+    if (isRateLimited()) {
+      lm.classList.remove('hidden');
+      lm.setAttribute('aria-hidden', 'false');
+      lm.innerHTML = '<span style="color:var(--yellow)">⚠ Rate limited by Hugging Face — pausing briefly. Set HF_TOKEN to raise limits.</span>';
+      end.style.display = 'none';
+      return;
+    }
+    if (hasMore()) {
+      lm.classList.remove('hidden');
+      const loading = anyLoading();
+      lm.setAttribute('aria-hidden', loading ? 'false' : 'true');
+      lm.innerHTML = loading
+        ? '<span class="spinner" aria-hidden="true"></span><span>Loading more…</span>'
+        : '<button type="button" id="load-more-btn">Load more</button>';
+      end.style.display = 'none';
+    } else {
+      lm.classList.add('hidden');
+      const partialFail = activeStreams().some((s) => buffers[s].error && !buffers[s].error.rateLimited);
+      if (loadedItems().length) {
+        end.style.display = '';
+        end.textContent = partialFail ? '— some results failed to load —' : '— end of results —';
+      } else {
+        end.style.display = 'none';
+      }
+    }
+  }
+  function showError() {
+    byId('results-list').innerHTML = '';
+    renderedIds = new Set();
+    byId('empty-state').classList.remove('visible');
+    byId('load-more').classList.add('hidden');
+    byId('end-marker').style.display = 'none';
+    byId('result-count').innerHTML = `<strong>0</strong> shown`;
+    const err = byId('error-state');
+    const errored = activeStreams().map((s) => buffers[s].error).find(Boolean);
+    if (errored && errored.rateLimited) {
+      byId('error-title').textContent = 'Rate limited by Hugging Face';
+      byId('error-desc').textContent = 'Too many requests. Wait a moment and retry, or run with an HF_TOKEN to raise the limit.';
+    } else {
+      byId('error-title').textContent = "Couldn't reach Hugging Face";
+      byId('error-desc').textContent = errored ? `${errored.message}. Check your connection and try again.` : 'There was a problem fetching results.';
+    }
+    err.classList.add('visible');
+  }
+  function hideError() { byId('error-state').classList.remove('visible'); }
+
+  /* ── Mute hint ────────────────────────────────────── */
+  let hintTimer = null;
+  function maybeShowHint() {
+    try { if (sessionStorage.getItem('hfsearch:hintShown')) return; } catch {}
+    if (state.muted.size > 0) return;
+    const hint = byId('mute-hint');
+    const firstRow = document.querySelector('.result-row');
+    if (!firstRow || !hint) return;
+    hint.classList.add('visible');
+    if (hintTimer) clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => {
+      hint.classList.remove('visible');
+      try { sessionStorage.setItem('hfsearch:hintShown', '1'); } catch {}
+    }, 4500);
+  }
+
+  /* ── Theme ────────────────────────────────────────── */
+  function applyTheme(mode) {
+    if (mode !== 'light' && mode !== 'dark') mode = 'system';
+    if (mode === 'system') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', mode);
+    lsSetRaw('theme', mode);
+    qsa('.theme-toggle button').forEach((b) => {
+      const on = b.dataset.themeSet === mode;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  function initTheme() {
+    applyTheme(lsGetRaw('theme') || 'system');
+    qsa('.theme-toggle button').forEach((b) => b.addEventListener('click', () => applyTheme(b.dataset.themeSet)));
+  }
+
+  /* ── Thumbnail hover preview ──────────────────────── */
+  function showThumbPreview(thumbEl) {
+    const url = thumbEl.dataset.thumb;
+    if (!url) return;
+    const pv = byId('thumb-preview');
+    const img = pv.querySelector('img');
+    if (img.getAttribute('src') !== url) img.setAttribute('src', url);
+    const r = thumbEl.getBoundingClientRect();
+    const W = 300, H = 300, GAP = 12;
+    let left = r.right + GAP;
+    if (left + W > window.innerWidth - 8) left = r.left - W - GAP;
+    left = Math.max(8, left);
+    let top = Math.max(8, Math.min(r.top + r.height / 2 - H / 2, window.innerHeight - H - 8));
+    pv.style.left = left + 'px';
+    pv.style.top = top + 'px';
+    pv.classList.add('visible');
+  }
+  function hideThumbPreview() { byId('thumb-preview').classList.remove('visible'); }
+
+  /* ── View mode (dense list ⇄ large-thumbnail gallery) ── */
+  function applyView() {
+    const gallery = state.view === 'gallery';
+    byId('results-list').classList.toggle('gallery', gallery);
+    byId('results-colhead').style.display = gallery ? 'none' : '';
+    qsa('#view-toggle button').forEach((b) => {
+      const on = b.dataset.view === state.view;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  function initView() {
+    applyView();
+    qsa('#view-toggle button').forEach((b) => b.addEventListener('click', () => {
+      if (state.view === b.dataset.view) return;
+      state.view = b.dataset.view;
+      lsSetRaw('view', state.view);
+      applyView();
+      render();
+      hideThumbPreview();
+    }));
+  }
+
+  /* ── Draggable column widths (header resizers) ────── */
+  function initColumnResize() {
+    const wrap = byId('results-wrap');
+    const COLS = ['name', 'downloads', 'likes', 'tags', 'updated'];
+    const saved = lsGet('cols');
+    if (saved && typeof saved === 'object') {
+      COLS.forEach((k) => {
+        const v = saved[k];
+        if (typeof v === 'number' && v >= 48 && v <= 1000) wrap.style.setProperty('--col-' + k, v + 'px');
+      });
+    }
+    qsa('#results-colhead .col-resizer').forEach((h) => {
+      h.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        const varName = h.dataset.var;
+        const startX = e.clientX;
+        const startW = parseFloat(getComputedStyle(wrap).getPropertyValue(varName)) || 120;
+        h.classList.add('dragging');
+        document.body.classList.add('col-resizing');
+        const move = (ev) => {
+          const w = Math.max(48, Math.min(1000, startW + (ev.clientX - startX)));
+          wrap.style.setProperty(varName, w + 'px');
+        };
+        const up = () => {
+          h.classList.remove('dragging');
+          document.body.classList.remove('col-resizing');
+          document.removeEventListener('pointermove', move);
+          document.removeEventListener('pointerup', up);
+          const cols = {};
+          COLS.forEach((k) => { cols[k] = Math.round(parseFloat(getComputedStyle(wrap).getPropertyValue('--col-' + k)) || 0); });
+          lsSet('cols', cols);
+        };
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', up);
+      });
+    });
+  }
+
+  /* ── Facet collapse ───────────────────────────────── */
+  function initFacetToggles() {
+    qsa('.facet-header[data-section]').forEach((btn) => {
+      const key = btn.dataset.section;
+      const section = btn.closest('.facet-section');
+      if (state.collapsed.has(key)) { section.classList.add('collapsed'); btn.setAttribute('aria-expanded', 'false'); }
+      btn.addEventListener('click', () => {
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', String(!expanded));
+        section.classList.toggle('collapsed', expanded);
+        if (expanded) state.collapsed.add(key); else state.collapsed.delete(key);
+        lsSet('collapsed', [...state.collapsed]);
+      });
+    });
+  }
+
+  function setActiveRadio(name, radio) {
+    const groupSel = name === 'type' ? 'label[id^="type-opt-"]' : '#facet-sort .facet-option';
+    qsa(groupSel).forEach((l) => l.classList.remove('active'));
+    radio.closest('label').classList.add('active');
+  }
+  function syncControlsFromState() {
+    const sb = byId('search-box');
+    sb.value = state.query;
+    byId('search-clear').classList.toggle('visible', !!state.query);
+    const tr = document.querySelector(`input[name="type"][value="${state.type}"]`);
+    if (tr) { tr.checked = true; setActiveRadio('type', tr); }
+    const sr = document.querySelector(`input[name="sort"][value="${state.sort}"]`);
+    if (sr) { sr.checked = true; setActiveRadio('sort', sr); }
+  }
+
+  /* ── Init ─────────────────────────────────────────── */
+  function init() {
+    loadConfig();
+    initTheme();
+    syncControlsFromState();
+    renderChips();
+    initFacetToggles();
+    initColumnResize();
+    initView();
+
+    const searchBox = byId('search-box');
+    const searchClear = byId('search-clear');
+    searchBox.addEventListener('input', debounce(() => {
+      const v = searchBox.value.trim();
+      if (v === state.query) return;
+      state.query = v;
+      searchClear.classList.toggle('visible', v.length > 0);
+      resetAndFetch();
+    }, SEARCH_DEBOUNCE));
+    searchBox.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && searchBox.value) {
+        searchBox.value = ''; state.query = '';
+        searchClear.classList.remove('visible');
+        resetAndFetch();
+      }
+    });
+    searchClear.addEventListener('click', () => {
+      searchBox.value = ''; state.query = '';
+      searchClear.classList.remove('visible');
+      searchBox.focus();
+      resetAndFetch();
+    });
+
+    qsa('input[name="type"]').forEach((radio) => radio.addEventListener('change', () => {
+      state.type = radio.value;
+      setActiveRadio('type', radio);
+      savePrefs();
+      resetAndFetch();
+    }));
+    qsa('input[name="sort"]').forEach((radio) => radio.addEventListener('change', () => {
+      state.sort = radio.value;
+      setActiveRadio('sort', radio);
+      savePrefs();
+      resetAndFetch();
+    }));
+
+    const muteInput = byId('mute-add-input');
+    const doMuteAdd = () => {
+      const v = muteInput.value.trim();
+      if (v) { state.muted.add(v); muteInput.value = ''; saveBlocklist(); render(); }
+    };
+    byId('mute-add-btn').addEventListener('click', doMuteAdd);
+    muteInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doMuteAdd(); });
+
+    const exclInput = byId('exclude-add-input');
+    const doExclAdd = () => {
+      const v = exclInput.value.trim().toLowerCase();
+      if (v) { state.excluded.add(v); exclInput.value = ''; saveBlocklist(); render(); }
+    };
+    byId('exclude-add-btn').addEventListener('click', doExclAdd);
+    exclInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doExclAdd(); });
+
+    // HF token (optional; persisted to this browser's localStorage)
+    const tokenInput = byId('token-input');
+    const refreshTokenStatus = () => {
+      const has = !!hfToken;
+      const st = byId('token-status');
+      if (st) { st.textContent = has ? '✓ saved in this browser' : 'Not set'; st.classList.toggle('on', has); }
+      const badge = byId('token-badge');
+      if (badge) badge.style.display = has ? '' : 'none';
+    };
+    if (tokenInput) {
+      tokenInput.value = hfToken;
+      refreshTokenStatus();
+      const saveToken = () => {
+        hfToken = tokenInput.value.trim();
+        if (hfToken) lsSetRaw('token', hfToken);
+        else { try { localStorage.removeItem(LS_PREFIX + 'token'); } catch {} }
+        refreshTokenStatus();
+        resetAndFetch();
+      };
+      byId('token-save-btn').addEventListener('click', saveToken);
+      tokenInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveToken(); });
+      byId('token-clear').addEventListener('click', () => {
+        tokenInput.value = ''; hfToken = '';
+        try { localStorage.removeItem(LS_PREFIX + 'token'); } catch {}
+        refreshTokenStatus();
+        resetAndFetch();
+      });
+    }
+
+    byId('show-hidden-btn').addEventListener('click', () => { state.showHidden = !state.showHidden; render(); });
+
+    byId('reset-link').addEventListener('click', () => {
+      state.query = ''; state.type = 'both'; state.sort = 'trending';
+      state.pipelines.clear(); state.libraries.clear();
+      state.muted.clear(); state.excluded.clear();
+      state.showHidden = false;
+      syncControlsFromState();
+      saveBlocklist(); savePrefs();
+      resetAndFetch();
+    });
+
+    byId('retry-btn').addEventListener('click', () => resetAndFetch());
+
+    const sidebar = byId('sidebar');
+    const overlay = byId('mob-overlay');
+    const mobToggle = byId('mob-toggle');
+    mobToggle.addEventListener('click', () => {
+      const isOpen = sidebar.classList.toggle('open');
+      overlay.classList.toggle('visible', isOpen);
+      mobToggle.setAttribute('aria-expanded', String(isOpen));
+    });
+    overlay.addEventListener('click', () => {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('visible');
+      mobToggle.setAttribute('aria-expanded', 'false');
+    });
+
+    // Manual "Load more" button (delegated — #load-more is re-rendered each update)
+    byId('load-more').addEventListener('click', () => {
+      if (hasMore() && !anyLoading() && !isRateLimited()) loadMore();
+    });
+
+    // Silent auto-load on scroll (kept alongside the button)
+    if ('IntersectionObserver' in window) {
+      io = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting && hasMore() && !anyLoading() && !isRateLimited()) loadMore();
+        }
+      }, { root: byId('results-wrap'), rootMargin: SENTINEL_MARGIN + 'px 0px' });
+      io.observe(byId('load-more'));
+    }
+
+    searchBox.focus();
+    resetAndFetch();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+
+</script>
+</body>
+</html>
