@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light dark">
-<title>HF Search</title>
+<title>HuggingFind</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='6.5' cy='6.5' r='5' fill='none' stroke='%236366f1' stroke-width='1.6'/%3E%3Cpath d='M10.5 10.5L14.5 14.5' stroke='%236366f1' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
 <!-- Anti-FOUC: apply the saved theme before the stylesheet paints.
      'system' (or unset) leaves it to prefers-color-scheme. -->
@@ -18,7 +18,7 @@
 </script>
 <style>
 /* ============================================================================
-   HF Search — Faceted Console
+   HuggingFind — Faceted Console
    System-aware day/night theme. Light is the default; dark is applied either
    automatically (prefers-color-scheme) or explicitly via <html data-theme>.
    A manual data-theme value always wins over the OS preference.
@@ -155,6 +155,9 @@ body { transition: background-color .2s ease, color .2s ease; }
 }
 #search-box:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
 #search-box::placeholder { color: var(--text3); }
+/* suppress the browser's native type=search clear button — we render our own #search-clear */
+#search-box::-webkit-search-cancel-button,
+#search-box::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
 
 .search-icon {
   position: absolute;
@@ -710,7 +713,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
         <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.6"/>
         <path d="M10.5 10.5L14.5 14.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
       </svg>
-      <span>HF Search</span>
+      <span>HuggingFind</span>
     </div>
     <div id="search-wrap">
       <label for="search-box" style="position:relative; display:block;">
@@ -718,7 +721,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
           <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.5"/>
           <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
-        <input type="search" id="search-box" placeholder="Search models &amp; datasets…" autocomplete="off" spellcheck="false" aria-label="Search query">
+        <input type="search" id="search-box" placeholder="Search models &amp; datasets — press Enter…" autocomplete="off" spellcheck="false" aria-label="Search query">
         <button id="search-clear" aria-label="Clear search" type="button">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button>
@@ -939,7 +942,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 
 <script>
 /* ============================================================================
-   HF Search — Faceted Console (live)
+   HuggingFind — Faceted Console (live)
    Talks directly to https://huggingface.co/api/{models,datasets} (CORS is open,
    it echoes the request Origin — works from a local server AND from file://).
 
@@ -962,7 +965,6 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
   const TARGET_VISIBLE = 30;
   const MAX_FILL_ROUNDS = 12;
   const DISPLAY_TAGS = 3;
-  const SEARCH_DEBOUNCE = 260;
   const SENTINEL_MARGIN = 400;   // px; keep in sync with the observer rootMargin
 
   const SORT_PARAM = {
@@ -1065,7 +1067,6 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
   function dt(x) { const d = x ? new Date(x).getTime() : 0; return isNaN(d) ? 0 : d; }
-  function debounce(fn, delay) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), delay); }; }
 
   /* ── API ──────────────────────────────────────────── */
   function mapItem(raw, type) {
@@ -1900,15 +1901,20 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 
     const searchBox = byId('search-box');
     const searchClear = byId('search-clear');
-    searchBox.addEventListener('input', debounce(() => {
-      const v = searchBox.value.trim();
-      if (v === state.query) return;
-      state.query = v;
-      searchClear.classList.toggle('visible', v.length > 0);
-      resetAndFetch();
-    }, SEARCH_DEBOUNCE));
+    // Typing only toggles the clear button; we wait for Enter before hitting the
+    // HF API so a fast typist doesn't fire a request per keystroke (and risk a 429).
+    searchBox.addEventListener('input', () => {
+      searchClear.classList.toggle('visible', searchBox.value.trim().length > 0);
+    });
     searchBox.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && searchBox.value) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const v = searchBox.value.trim();
+        if (v === state.query) return;
+        state.query = v;
+        searchClear.classList.toggle('visible', v.length > 0);
+        resetAndFetch();
+      } else if (e.key === 'Escape' && searchBox.value) {
         searchBox.value = ''; state.query = '';
         searchClear.classList.remove('visible');
         resetAndFetch();
