@@ -504,8 +504,8 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 
 /* Thumbnail */
 .row-thumb {
-  width: 40px; height: 40px; border-radius: 5px; overflow: hidden;
-  position: relative; border: 1px solid var(--border); flex-shrink: 0;
+  display: block; width: 40px; height: 40px; border-radius: 5px; overflow: hidden;
+  position: relative; border: 1px solid var(--border); flex-shrink: 0; cursor: pointer;
 }
 .row-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; position: relative; z-index: 1; }
 .thumb-fallback {
@@ -624,13 +624,23 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 
 /* Thumbnail hover preview */
 #thumb-preview {
-  position: fixed; z-index: 200; width: 300px; height: 300px;
+  position: fixed; z-index: 200; width: 300px;
   border-radius: 8px; overflow: hidden; border: 1px solid var(--border2);
   background: var(--surface2); box-shadow: var(--shadow);
   opacity: 0; pointer-events: none; display: none;
 }
 #thumb-preview.visible { display: block; opacity: 1; }
-#thumb-preview img { width: 100%; height: 100%; object-fit: contain; background: var(--surface3); display: block; }
+#thumb-preview img { width: 100%; height: 260px; object-fit: contain; background: var(--surface3); display: block; }
+#thumb-preview .tp-meta { padding: 8px 10px; border-top: 1px solid var(--border); }
+#thumb-preview .tp-name {
+  font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text);
+  word-break: break-word;
+}
+#thumb-preview .tp-desc {
+  margin-top: 4px; font-size: 11px; line-height: 1.4; color: var(--text2);
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+#thumb-preview .tp-desc:empty { display: none; }
 
 /* ─── Skeleton (loading) rows ────────────────────────── */
 .skeleton-row {
@@ -759,11 +769,9 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
           </label>
           <label class="facet-option" id="type-opt-model">
             <input type="radio" name="type" value="model"> <span class="facet-option-label">Models</span>
-            <span class="facet-option-count" id="count-models">—</span>
           </label>
           <label class="facet-option" id="type-opt-dataset">
             <input type="radio" name="type" value="dataset"> <span class="facet-option-label">Datasets</span>
-            <span class="facet-option-count" id="count-datasets">—</span>
           </label>
         </div>
       </div>
@@ -956,7 +964,10 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 <div id="mute-hint" aria-hidden="true">← Hover a row to mute its author</div>
 
 <!-- Floating thumbnail preview (shown on row-thumb hover) -->
-<div id="thumb-preview" aria-hidden="true"><img alt=""></div>
+<div id="thumb-preview" aria-hidden="true">
+  <img alt="">
+  <div class="tp-meta"><div class="tp-name"></div><div class="tp-desc"></div></div>
+</div>
 
 <script>
 /* ============================================================================
@@ -1395,9 +1406,6 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     renderPipelineList(pCounts);
     renderFacetList('library-list', lCounts, state.libraries, 'library-badge');
 
-    byId('count-models').textContent = typeCountLabel('model');
-    byId('count-datasets').textContent = typeCountLabel('dataset');
-
     byId('result-count').innerHTML =
       `<strong>${view.visible.length}</strong> shown<span class="total-extra"> · ${view.rows.length} loaded</span>`;
 
@@ -1484,13 +1492,6 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     if (state.type === 'dataset') return 'datasets';
     return 'models or datasets';
   }
-  function typeCountLabel(t) {
-    const buf = buffers[t];
-    const active = activeStreams().includes(t);
-    if (!active && buf.items.length === 0) return '—';
-    return buf.done ? String(buf.items.length) : buf.items.length + '+';
-  }
-
   function buildItem(r) { return state.view === 'gallery' ? buildCard(r) : buildRow(r); }
 
   function buildCard(r) {
@@ -1592,11 +1593,12 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     const tu = thumbUrl(item);
     const initial = escHtml(item.name[0] || item.author[0] || '?');
 
+    const previewDesc = (item.description || '').trim().slice(0, 240);
     li.innerHTML = `
-      <div class="row-thumb" data-thumb="${escHtml(tu)}" style="background:${gradientFor(item)}">
+      <a class="row-thumb" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" data-thumb="${escHtml(tu)}" data-name="${escHtml(item.id)}" data-desc="${escHtml(previewDesc)}" style="background:${gradientFor(item)}" aria-label="Open ${escHtml(item.id)}">
         <span class="thumb-fallback">${initial}</span>
         <img loading="lazy" decoding="async" alt="" src="${escHtml(tu)}">
-      </div>
+      </a>
       <div class="row-identity">
         <a class="row-link" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" title="${escHtml(item.id)}">
           <span class="row-id">
@@ -1884,15 +1886,18 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     const pv = byId('thumb-preview');
     const img = pv.querySelector('img');
     if (img.getAttribute('src') !== url) img.setAttribute('src', url);
+    pv.querySelector('.tp-name').textContent = thumbEl.dataset.name || '';
+    pv.querySelector('.tp-desc').textContent = thumbEl.dataset.desc || '';
+    // Reveal first so we can measure the (variable) height, then position.
+    pv.classList.add('visible');
     const r = thumbEl.getBoundingClientRect();
-    const W = 300, H = 300, GAP = 12;
+    const W = 300, H = pv.offsetHeight || 300, GAP = 12;
     let left = r.right + GAP;
     if (left + W > window.innerWidth - 8) left = r.left - W - GAP;
     left = Math.max(8, left);
     let top = Math.max(8, Math.min(r.top + r.height / 2 - H / 2, window.innerHeight - H - 8));
     pv.style.left = left + 'px';
     pv.style.top = top + 'px';
-    pv.classList.add('visible');
   }
   function hideThumbPreview() { byId('thumb-preview').classList.remove('visible'); }
 
