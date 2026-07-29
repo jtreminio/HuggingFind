@@ -348,6 +348,7 @@ body { transition: background-color .2s ease, color .2s ease; }
 .linkish:focus-visible { outline: 2px solid var(--accent); }
 
 /* Reset link */
+#clear-cache-link,
 #reset-link {
   display: block;
   padding: 10px 12px;
@@ -362,6 +363,10 @@ body { transition: background-color .2s ease, color .2s ease; }
 }
 #reset-link:hover { color: var(--red); }
 #reset-link:focus-visible { outline: 2px solid var(--accent); }
+#clear-cache-link { padding-bottom: 0; }
+#clear-cache-link:hover { color: var(--accent2); }
+#clear-cache-link:focus-visible { outline: 2px solid var(--accent); }
+#clear-cache-link.busy { color: var(--green); pointer-events: none; }
 
 /* ─── Main Header (sticky) ───────────────────────────── */
 #results-header {
@@ -937,6 +942,11 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
         </div>
       </div>
 
+      <button id="clear-cache-link" type="button" aria-label="Clear cached thumbnail images" title="Thumbnails are stored locally so refreshes don't re-download them. Clear to fetch fresh copies.">
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="vertical-align:-1px;margin-right:4px"><path d="M2 3h8M4.5 3V2h3v1M3 3l.5 7h5L9 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Clear image cache
+      </button>
+
       <button id="reset-link" type="button" aria-label="Reset all filters">
         <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="vertical-align:-1px;margin-right:4px"><path d="M2 6a4 4 0 1 0 1-2.65" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 2.5V5.5H5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Reset all filters
@@ -1294,6 +1304,111 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     let h = 0;
     for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 360;
     return `linear-gradient(135deg, hsl(${h} 52% 52%), hsl(${(h + 42) % 360} 56% 42%))`;
+  }
+
+  /* ── Thumbnail cache ──────────────────────────────────
+     HF serves preview images with an ETag but no Cache-Control and no
+     Last-Modified, so the browser has no freshness basis and revalidates every
+     thumbnail on every load — one network round-trip each, ~130-230ms apiece,
+     even though the bytes are already on disk. We keep our own copy and hand
+     the <img> an object URL instead, so a repeat visit paints from disk in a
+     few ms. Cache Storage gives us a store we can actually empty; where it
+     isn't available (file:// origins) we fall back to the HTTP cache, which
+     force-cache will reuse without revalidating.
+     The trade: a repo that replaces its image keeps showing the old one until
+     the cache is cleared. That's what the Clear image cache button is for. */
+  const THUMB_CACHE = 'hfsearch-thumbs-v1';
+  // Repo previews are full-resolution — 1.3MB apiece is typical — so live
+  // object URLs are capped by bytes, not count, and evicted oldest-first.
+  // The on-disk Cache Storage copy is untouched by this; a re-shown tile just
+  // reads it back in ~0.3ms.
+  const MAX_OBJECT_URL_BYTES = 96 * 1024 * 1024;
+  const objectUrls = new Map();       // source URL → { url, bytes } (insertion-ordered)
+  let objectUrlBytes = 0;
+  const staleUrls = new Set();        // cleared but not yet re-fetched
+  let thumbStorePromise = null;
+  let thumbIO = null;
+
+  function thumbStore() {
+    if (!thumbStorePromise) {
+      thumbStorePromise = (typeof caches !== 'undefined' && caches && caches.open)
+        ? caches.open(THUMB_CACHE).catch(() => null)
+        : Promise.resolve(null);
+    }
+    return thumbStorePromise;
+  }
+
+  async function thumbObjectUrl(url) {
+    const hit = objectUrls.get(url);
+    if (hit) return hit.url;
+    const store = await thumbStore();
+    const stale = staleUrls.has(url);
+    let resp = (store && !stale) ? await store.match(url).catch(() => null) : null;
+    if (!resp) {
+      // A cleared entry must bypass the HTTP cache too, or we'd just re-adopt
+      // the same bytes the browser already had.
+      resp = await fetch(url, { cache: stale ? 'reload' : 'force-cache', mode: 'cors' });
+      if (!resp.ok) throw new Error('thumb HTTP ' + resp.status);
+      if (store) store.put(url, resp.clone()).catch(() => {});
+      staleUrls.delete(url);
+    }
+    const blob = await resp.blob();
+    const objUrl = URL.createObjectURL(blob);
+    objectUrls.set(url, { url: objUrl, bytes: blob.size });
+    objectUrlBytes += blob.size;
+    for (const [oldest, entry] of objectUrls) {
+      if (objectUrlBytes <= MAX_OBJECT_URL_BYTES || oldest === url) break;
+      URL.revokeObjectURL(entry.url);
+      objectUrlBytes -= entry.bytes;
+      objectUrls.delete(oldest);
+    }
+    return objUrl;
+  }
+
+  // Replaces loading="lazy": the <img> starts blank and is hydrated from the
+  // cache when it nears the viewport.
+  function observeThumb(img) {
+    if (typeof IntersectionObserver !== 'function') { hydrateThumb(img); return; }
+    if (!thumbIO) {
+      thumbIO = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          thumbIO.unobserve(e.target);
+          hydrateThumb(e.target);
+        }
+      }, { root: byId('results-wrap'), rootMargin: '400px' });
+    }
+    thumbIO.observe(img);
+  }
+
+  async function hydrateThumb(img) {
+    const url = img.dataset.src;
+    if (!url || img.dataset.hydrated) return;
+    img.dataset.hydrated = '1';
+    try {
+      img.src = await thumbObjectUrl(url);
+    } catch {
+      // Reuse each view's existing error handling (strip image, mark broken).
+      img.dispatchEvent(new Event('error'));
+    }
+  }
+
+  async function clearThumbCache() {
+    let n = 0;
+    const store = await thumbStore();
+    if (store) {
+      const keys = await store.keys().catch(() => []);
+      n = keys.length;
+      await caches.delete(THUMB_CACHE).catch(() => {});
+      thumbStorePromise = null;
+    }
+    for (const [src, entry] of objectUrls) { staleUrls.add(src); URL.revokeObjectURL(entry.url); }
+    if (!n) n = objectUrls.size;
+    objectUrls.clear();
+    objectUrlBytes = 0;
+    brokenThumbs.clear();   // give previously-failed images another chance
+    render();
+    return n;
   }
 
   function buildUrl(type) {
@@ -1660,7 +1775,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
       <a class="mt-link" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" title="${escHtml(item.id)}">
         <span class="mt-img" style="background:${gradientFor(item)}">
           <span class="thumb-fallback">${initial}</span>
-          ${tu ? `<img loading="lazy" decoding="async" alt="" src="${escHtml(tu)}">` : ''}
+          ${tu ? `<img decoding="async" alt="" data-src="${escHtml(tu)}">` : ''}
         </span>
         <span class="mt-cap">
           <span class="mt-title"><span class="row-author">${escHtml(item.author)}</span><span class="row-name${item.gated ? ' gated' : ''}">${escHtml(item.name)}</span></span>
@@ -1698,7 +1813,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
         if (img.naturalWidth && img.naturalHeight) record(img.naturalWidth / img.naturalHeight);
       });
       img.addEventListener('error', () => { img.remove(); record(MOSAIC.defaultAR); noteBrokenThumb(item.id); });
-      if (img.complete && img.naturalWidth) record(img.naturalWidth / img.naturalHeight);
+      observeThumb(img);
     }
     return li;
   }
@@ -2695,7 +2810,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     li.innerHTML = `
       <a class="card-banner" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" title="${escHtml(item.id)}" style="background:${gradientFor(item)}">
         <span class="thumb-fallback">${initial}</span>
-        <img loading="lazy" decoding="async" alt="" src="${escHtml(tu)}">
+        <img decoding="async" alt="" data-src="${escHtml(tu)}">
       </a>
       <div class="card-actions">
         <button type="button" class="${muteBtnClass}" data-action="mute" data-author="${escHtml(item.author)}" aria-label="${muteLabel} ${escHtml(item.author)}">
@@ -2727,7 +2842,10 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
       render();
     });
     const cardImg = li.querySelector('.card-banner img');
-    if (cardImg) cardImg.addEventListener('error', () => { cardImg.remove(); noteBrokenThumb(item.id); });
+    if (cardImg) {
+      cardImg.addEventListener('error', () => { cardImg.remove(); noteBrokenThumb(item.id); });
+      observeThumb(cardImg);
+    }
     return li;
   }
 
@@ -2765,7 +2883,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     li.innerHTML = `
       <a class="row-thumb" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" data-thumb="${escHtml(tu)}" data-name="${escHtml(item.id)}" data-desc="${escHtml(previewDesc)}" style="background:${gradientFor(item)}" aria-label="Open ${escHtml(item.id)}">
         <span class="thumb-fallback">${initial}</span>
-        <img loading="lazy" decoding="async" alt="" src="${escHtml(tu)}">
+        <img decoding="async" alt="" data-src="${escHtml(tu)}">
       </a>
       <div class="row-identity">
         <a class="row-link" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" title="${escHtml(item.id)}">
@@ -2807,6 +2925,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     const thumbEl = li.querySelector('.row-thumb');
     const thumbImg = thumbEl.querySelector('img');
     thumbImg.addEventListener('error', () => { thumbImg.remove(); noteBrokenThumb(item.id); }); // reveal gradient fallback
+    observeThumb(thumbImg);
     thumbEl.addEventListener('mouseenter', () => showThumbPreview(thumbEl));
     thumbEl.addEventListener('mouseleave', hideThumbPreview);
     return li;
@@ -3068,7 +3187,12 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     if (!url) return;
     const pv = byId('thumb-preview');
     const img = pv.querySelector('img');
-    if (img.getAttribute('src') !== url) img.setAttribute('src', url);
+    // Same cache as the row thumbnails, so hovering never re-downloads.
+    if (img.dataset.thumbSrc !== url) {
+      img.dataset.thumbSrc = url;
+      img.removeAttribute('src');
+      thumbObjectUrl(url).then((o) => { if (img.dataset.thumbSrc === url) img.src = o; }).catch(() => {});
+    }
     pv.querySelector('.tp-name').textContent = thumbEl.dataset.name || '';
     pv.querySelector('.tp-desc').textContent = thumbEl.dataset.desc || '';
     // Reveal first so we can measure the (variable) height, then position.
@@ -3305,6 +3429,20 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
       syncControlsFromState();
       saveBlocklist(); savePrefs();
       resetAndFetch();
+    });
+
+    const clearCacheBtn = byId('clear-cache-link');
+    const clearCacheLabel = clearCacheBtn.innerHTML;
+    clearCacheBtn.addEventListener('click', async () => {
+      clearCacheBtn.classList.add('busy');
+      clearCacheBtn.textContent = 'Clearing…';
+      let n = 0;
+      try { n = await clearThumbCache(); } catch {}
+      clearCacheBtn.textContent = n ? `Cleared ${n} image${n !== 1 ? 's' : ''}` : 'Cache was empty';
+      setTimeout(() => {
+        clearCacheBtn.classList.remove('busy');
+        clearCacheBtn.innerHTML = clearCacheLabel;
+      }, 2000);
     });
 
     byId('retry-btn').addEventListener('click', () => resetAndFetch());
