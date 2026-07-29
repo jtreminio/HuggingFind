@@ -1194,6 +1194,8 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     const vw = lsGetRaw('view') === 'mosaic' ? 'bsp' : lsGetRaw('view');
     if (VALID_VIEWS.includes(vw)) state.view = vw;
     state.withImageOnly = lsGetRaw('withImageOnly') === '1';
+    const pl = lsGet('pipelines'); if (Array.isArray(pl)) pl.forEach((t) => state.pipelines.add(t));
+    const lb = lsGet('libraries'); if (Array.isArray(lb)) lb.forEach((t) => state.libraries.add(t));
     const col = lsGet('collapsed'); if (Array.isArray(col)) col.forEach((s) => state.collapsed.add(s));
   }
 
@@ -1205,6 +1207,8 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     lsSetRaw('sort', state.sort);
     lsSetRaw('type', state.type);
     lsSetRaw('withImageOnly', state.withImageOnly ? '1' : '0');
+    lsSet('pipelines', [...state.pipelines]);
+    lsSet('libraries', [...state.libraries]);
     lsSet('collapsed', [...state.collapsed]);
   }
 
@@ -2857,6 +2861,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
         const cb = label.querySelector('input');
         cb.addEventListener('change', () => {
           if (cb.checked) state.pipelines.add(val); else state.pipelines.delete(val);
+          savePrefs();
           render();
         });
         container.appendChild(label);
@@ -2893,6 +2898,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
       const cb = label.querySelector('input');
       cb.addEventListener('change', () => {
         if (cb.checked) activeSet.add(val); else activeSet.delete(val);
+        savePrefs();
         render();
       });
       container.appendChild(label);
