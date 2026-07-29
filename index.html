@@ -248,6 +248,7 @@ body { transition: background-color .2s ease, color .2s ease; }
   cursor: pointer;
 }
 .facet-option-label { flex: 1; color: var(--text); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.facet-option-sep { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
 .facet-option-count { font-family: var(--mono); font-size: 11px; color: var(--text3); }
 .facet-option.active .facet-option-label { color: var(--accent2); }
 .facet-option.zero:not(.active) .facet-option-label { color: var(--text2); }
@@ -446,6 +447,9 @@ body { transition: background-color .2s ease, color .2s ease; }
 /* ─── Results: shared grid (sticky header + rows) ────── */
 #results-wrap {
   flex: 1; overflow-y: auto; overflow-x: auto; position: relative;
+  /* Reserve the scrollbar gutter so the mosaic's cell measurement isn't
+     invalidated by a scrollbar that its own result height brought in. */
+  scrollbar-gutter: stable;
   /* Draggable column widths (persisted to localStorage). */
   --col-thumb: 46px;
   --col-name: 380px;
@@ -590,6 +594,53 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .card-stats .cs-date { margin-left: auto; color: var(--text3); }
 .card-badges { display: flex; gap: 4px; flex-wrap: wrap; }
 .card-tags { display: flex; gap: 4px; flex-wrap: wrap; max-height: 19px; overflow: hidden; }
+
+/* ─── Mosaic views (masonry / bsp / stacked) ──────────
+   All three share this shell: the layout function returns absolute positions
+   and an image height per tile, and every tile carries a fixed caption strip
+   below its image — the layout math already paid for that strip's height. */
+#results-list.mosaic {
+  position: relative; display: block; min-width: 0;
+  padding: 14px 16px;
+}
+.mosaic-tile {
+  position: absolute; top: 0; left: 0; overflow: hidden;
+  border-radius: 8px;
+  /* An inset ring rather than a border: a border would consume 2px of the
+     tile's content box and skew the image away from its exact aspect ratio. */
+  box-shadow: inset 0 0 0 1px var(--border);
+  background: var(--surface);
+  transition: box-shadow .12s, opacity .12s;
+}
+.mosaic-tile:hover { box-shadow: inset 0 0 0 1px var(--border2), var(--shadow); z-index: 2; }
+.mosaic-tile.is-hidden-item { opacity: .45; }
+.mosaic-tile.is-hidden-item:hover { opacity: .8; }
+.mt-link { display: block; text-decoration: none; height: 100%; }
+.mt-img { display: block; position: relative; overflow: hidden; }
+.mt-img img { width: 100%; height: 100%; object-fit: cover; display: block; position: relative; z-index: 1; }
+.mosaic-tile .thumb-fallback { font-size: 30px; }
+.mt-cap {
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
+  height: var(--m-cap, 42px); padding: 0 8px; overflow: hidden;
+  border-top: 1px solid var(--border);
+}
+.mt-title { font-size: 11.5px; line-height: 1.3; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-title .row-author { color: var(--text3); }
+.mt-title .row-name { font-weight: 600; }
+.mt-link:hover .mt-title .row-name { color: var(--accent2); text-decoration: underline; }
+.mt-stats {
+  display: flex; align-items: center; gap: 9px;
+  font-family: var(--mono); font-size: 10px; color: var(--text3);
+}
+.mt-stats .cs { display: inline-flex; align-items: center; gap: 3px; }
+.mosaic-tile .card-actions { top: 6px; right: 6px; }
+.act-btn.icon-only { padding: 5px; border-radius: 4px; }
+.mosaic-tile:hover .card-actions, .mosaic-tile:focus-within .card-actions { opacity: 1; }
+/* Skeletons flow inline — they are not positioned by a layout function. */
+.mosaic-skel.skel {
+  display: inline-block; vertical-align: top; border-radius: 8px;
+  margin: 0 8px 8px 0;
+}
 
 .act-btn {
   display: flex; align-items: center; gap: 3px;
@@ -773,6 +824,9 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
           <label class="facet-option" id="type-opt-dataset">
             <input type="radio" name="type" value="dataset"> <span class="facet-option-label">Datasets</span>
           </label>
+          <label class="facet-option facet-option-sep" id="type-opt-withimage" title="Only repos that ship a preview image of their own">
+            <input type="checkbox" id="with-image-only"> <span class="facet-option-label">With preview image only</span>
+          </label>
         </div>
       </div>
 
@@ -906,6 +960,15 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
         <button data-view="gallery" type="button" title="Large thumbnails" aria-label="Gallery view">
           <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5.2" height="5.2" rx="1" fill="currentColor"/><rect x="8.8" y="2" width="5.2" height="5.2" rx="1" fill="currentColor"/><rect x="2" y="8.8" width="5.2" height="5.2" rx="1" fill="currentColor"/><rect x="8.8" y="8.8" width="5.2" height="5.2" rx="1" fill="currentColor"/></svg>
         </button>
+        <button data-view="bsp" type="button" title="Partition — edge-to-edge mosaic" aria-label="Partition mosaic view">
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="7" height="5.4" rx="1" fill="currentColor"/><rect x="9.8" y="2" width="4.2" height="2.4" rx="1" fill="currentColor"/><rect x="9.8" y="5.2" width="4.2" height="8.8" rx="1" fill="currentColor"/><rect x="2" y="8.2" width="3.2" height="5.8" rx="1" fill="currentColor"/><rect x="6" y="8.2" width="3" height="5.8" rx="1" fill="currentColor"/></svg>
+        </button>
+        <button data-view="masonry" type="button" title="Masonry — exact ratios, columns" aria-label="Masonry view">
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="3.6" height="6.6" rx="1" fill="currentColor"/><rect x="6.2" y="2" width="3.6" height="4.4" rx="1" fill="currentColor"/><rect x="10.4" y="2" width="3.6" height="8.2" rx="1" fill="currentColor"/><rect x="2" y="9.4" width="3.6" height="4.6" rx="1" fill="currentColor"/><rect x="6.2" y="7.2" width="3.6" height="6.8" rx="1" fill="currentColor"/><rect x="10.4" y="11" width="3.6" height="3" rx="1" fill="currentColor"/></svg>
+        </button>
+        <button data-view="stacked" type="button" title="Stacked rows — big squares" aria-label="Stacked rows view">
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5.6" height="5.6" rx="1" fill="currentColor"/><rect x="8.4" y="2" width="5.6" height="2.5" rx="1" fill="currentColor"/><rect x="8.4" y="5.1" width="5.6" height="2.5" rx="1" fill="currentColor"/><rect x="2" y="8.4" width="5.6" height="2.5" rx="1" fill="currentColor"/><rect x="2" y="11.5" width="5.6" height="2.5" rx="1" fill="currentColor"/><rect x="8.4" y="8.4" width="5.6" height="5.6" rx="1" fill="currentColor"/></svg>
+        </button>
       </div>
       <div class="theme-toggle" role="group" aria-label="Color theme">
         <button data-theme-set="light" type="button" title="Light theme" aria-label="Light theme">
@@ -995,6 +1058,28 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
   const MAX_FILL_ROUNDS = 12;
   const DISPLAY_TAGS = 3;
   const SENTINEL_MARGIN = 400;   // px; keep in sync with the observer rootMargin
+  const VALID_VIEWS = ['dense', 'gallery', 'bsp', 'masonry', 'stacked'];
+  // The three mosaic views differ only in which layout function positions the
+  // tiles; everything else about them — markup, captions, sizing — is shared.
+  const MOSAIC_VIEWS = ['bsp', 'masonry', 'stacked'];
+
+  /* Shared tile budget for every mosaic layout. `target` means whatever the
+     chosen algorithm takes it to mean (column width for masonry, tile size for
+     bsp, row height for stacked), so each view carries its own. */
+  const MOSAIC = {
+    gap: 10,
+    captionH: 42,     // fixed caption strip under every image; layouts pay for it
+    defaultAR: 1,     // unknown / broken image → square, same as a placeholder
+    boostPlaceholders: true,
+    target: { bsp: 200, masonry: 240, stacked: 250 },
+    boost: { bsp: 1.6, masonry: 1.22, stacked: 0.6 },
+    /* Layouts whose result for early items depends on later ones are laid out
+       in frozen segments, so appending a page can only reflow the unfrozen
+       tail. 0 = lay the whole list out at once (safe when the algorithm is
+       prefix-stable). Stacked's DP walks its row-break chain backwards from
+       the end, so without this a single appended page reflows the screen. */
+    segment: { bsp: 0, masonry: 0, stacked: 60 },
+  };
 
   const SORT_PARAM = {
     trending: 'trendingScore',
@@ -1046,7 +1131,8 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     excluded: new Set(),
     showHidden: false,
     collapsed: new Set(),
-    view: 'dense',     // 'dense' | 'gallery'
+    view: 'dense',     // 'dense' | 'gallery' | 'mosaic'
+    withImageOnly: false,
   };
 
   function freshBuf() {
@@ -1083,7 +1169,10 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     const sp = lsGetRaw('sort'); if (sp) state.sort = normalizeSort(sp);
     const tp = lsGetRaw('type'); if (tp) state.type = normalizeType(tp);
     hfToken = lsGetRaw('token') || '';
-    const vw = lsGetRaw('view'); if (vw === 'gallery' || vw === 'dense') state.view = vw;
+    // 'mosaic' was the old quantized-cell grid; its users land on partition.
+    const vw = lsGetRaw('view') === 'mosaic' ? 'bsp' : lsGetRaw('view');
+    if (VALID_VIEWS.includes(vw)) state.view = vw;
+    state.withImageOnly = lsGetRaw('withImageOnly') === '1';
     const col = lsGet('collapsed'); if (Array.isArray(col)) col.forEach((s) => state.collapsed.add(s));
   }
 
@@ -1094,6 +1183,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
   function savePrefs() {
     lsSetRaw('sort', state.sort);
     lsSetRaw('type', state.type);
+    lsSetRaw('withImageOnly', state.withImageOnly ? '1' : '0');
     lsSet('collapsed', [...state.collapsed]);
   }
 
@@ -1334,6 +1424,9 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
   function matchesType(item) { return state.type === 'both' ? true : item.type === state.type; }
   function matchesPipeline(item) { return state.pipelines.size === 0 || state.pipelines.has(item.pipeline_tag); }
   function matchesLibrary(item) { return state.libraries.size === 0 || state.libraries.has(item.library_name); }
+  // A repo "has a preview image" only if it ships one itself — HF's generated
+  // social card is a placeholder and doesn't count.
+  function matchesImage(item) { return !state.withImageOnly || !!item.thumbFile; }
   function isHiddenByMute(item) { return state.muted.has(item.author); }
   function isHiddenByWords(item) {
     if (state.excluded.size === 0) return false;
@@ -1364,7 +1457,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     return out;
   }
   function getFilteredResults() {
-    const base = dedupedLoaded().filter((it) => matchesType(it) && matchesPipeline(it) && matchesLibrary(it));
+    const base = dedupedLoaded().filter((it) => matchesType(it) && matchesPipeline(it) && matchesLibrary(it) && matchesImage(it));
     return sortItems(base).map((item) => ({
       item,
       hiddenByMute: isHiddenByMute(item),
@@ -1454,11 +1547,13 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     const list = byId('results-list');
     list.innerHTML = '';
     renderedIds = new Set();
+    resetMosaicSegments();   // the item set changed; frozen geometry is void
     if (view.display.length) {
       const frag = document.createDocumentFragment();
       view.display.forEach((r) => { renderedIds.add(r.item.id); frag.appendChild(buildItem(r)); });
       list.appendChild(frag);
     }
+    layoutMosaic();
     updateEmptyState(view);
   }
 
@@ -1475,7 +1570,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
       frag.appendChild(buildItem(r));
       added++;
     }
-    if (added) list.appendChild(frag);
+    if (added) { list.appendChild(frag); layoutMosaic(); }
     updateEmptyState(view);
   }
 
@@ -1492,7 +1587,1051 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     if (state.type === 'dataset') return 'datasets';
     return 'models or datasets';
   }
-  function buildItem(r) { return state.view === 'gallery' ? buildCard(r) : buildRow(r); }
+  function isMosaic() { return MOSAIC_VIEWS.includes(state.view); }
+
+  function buildItem(r) {
+    if (state.view === 'gallery') return buildCard(r);
+    if (isMosaic()) return buildTile(r);
+    return buildRow(r);
+  }
+
+  /* ── Mosaic tiles ─────────────────────────────────────
+     Natural aspect ratios are only known once an image decodes, so tiles start
+     as single square cells and re-shape as ratios arrive. The cache outlives
+     re-renders, so filtering/sorting doesn't re-flash to squares. */
+  const arCache = new Map();   // item.id → natural width / natural height
+
+  function tileAR(id) {
+    const ar = arCache.get(id);
+    return ar > 0 && isFinite(ar) ? ar : MOSAIC.defaultAR;
+  }
+
+  function buildTile(r) {
+    const { item, hiddenByMute, hiddenByWord } = r;
+    const isHidden = hiddenByMute || hiddenByWord;
+    const li = document.createElement('li');
+    li.className = 'mosaic-tile' + (isHidden ? ' is-hidden-item' : '');
+    li.dataset.author = item.author;
+    li.dataset.id = item.id;
+
+    const isMuted = state.muted.has(item.author);
+    const muteLabel = isMuted ? 'Unmute' : 'Mute author';
+    const muteBtnClass = isMuted ? 'act-btn unmute-row' : 'act-btn';
+    const href = item.type === 'dataset'
+      ? 'https://huggingface.co/datasets/' + item.id
+      : 'https://huggingface.co/' + item.id;
+    // Only a real image from the repo gets a shaped tile. Repos without one
+    // would otherwise fall back to HF's 1200×648 social card and claim a
+    // landscape slot for what is really a placeholder, so they stay 1:1.
+    const tu = item.thumbFile ? thumbUrl(item) : null;
+    if (!tu) li.dataset.noimg = '1';
+    const initial = escHtml(item.name[0] || item.author[0] || '?');
+
+    li.innerHTML = `
+      <a class="mt-link" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" title="${escHtml(item.id)}">
+        <span class="mt-img" style="background:${gradientFor(item)}">
+          <span class="thumb-fallback">${initial}</span>
+          ${tu ? `<img loading="lazy" decoding="async" alt="" src="${escHtml(tu)}">` : ''}
+        </span>
+        <span class="mt-cap">
+          <span class="mt-title"><span class="row-author">${escHtml(item.author)}</span><span class="row-name${item.gated ? ' gated' : ''}">${escHtml(item.name)}</span></span>
+          <span class="mt-stats">
+            <span class="cs" title="Downloads"><svg class="stat-icon" width="10" height="10" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 2v7M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>${fmtNum(item.downloads)}</span>
+            <span class="cs" title="Likes"><svg class="stat-icon" width="10" height="10" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 11s-5-3.5-5-7a3 3 0 0 1 5-2.2A3 3 0 0 1 12 4c0 3.5-5 7-5 7z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>${fmtNum(item.likes)}</span>
+          </span>
+        </span>
+      </a>
+      <div class="card-actions">
+        <button type="button" class="${muteBtnClass} icon-only" data-action="mute" data-author="${escHtml(item.author)}" title="${muteLabel} ${escHtml(item.author)}" aria-label="${muteLabel} ${escHtml(item.author)}">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="4" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 10.5c0-2.5 2-4 4.5-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>${isMuted ? '<path d="M9 7l2 2M11 7l-2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>' : '<path d="M8 8l3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>'}</svg>
+        </button>
+      </div>
+    `;
+
+    const muteBtn = li.querySelector('[data-action="mute"]');
+    muteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const author = muteBtn.dataset.author;
+      if (state.muted.has(author)) state.muted.delete(author);
+      else state.muted.add(author);
+      saveBlocklist();
+      render();
+    });
+
+    const img = li.querySelector('.mt-img img');
+    if (img) {
+      const record = (ar) => {
+        if (arCache.get(item.id) === ar) return;
+        arCache.set(item.id, ar);
+        scheduleMosaicLayout();
+      };
+      img.addEventListener('load', () => {
+        if (img.naturalWidth && img.naturalHeight) record(img.naturalWidth / img.naturalHeight);
+      });
+      img.addEventListener('error', () => { img.remove(); record(MOSAIC.defaultAR); });
+      if (img.complete && img.naturalWidth) record(img.naturalWidth / img.naturalHeight);
+    }
+    return li;
+  }
+
+  /* ── Mosaic geometry ──────────────────────────────────
+     Three interchangeable layout functions, each pure: no DOM, no timers, no
+     randomness. Signature is shared —
+       layoutX(items, opts) -> { height, tiles: [{ id, x, y, w, imgH }] }
+     with items [{ id, ar, placeholder }] and opts { width, gap, target,
+     captionH, boost, boostPlaceholders }. A tile's full box is
+     w × (imgH + captionH); the layout has already paid for the caption. */
+
+    /**
+   * layoutMasonry — fluid column masonry (demo 04).
+   *
+   * Geometry
+   *   cols  = clamp(round(width / opts.target), 1, MAX_COLS)
+   *   colW  = (width - (cols-1)*gap) / cols            // columns FLEX to fill width exactly
+   *   Each item drops into the currently shortest column at its native aspect ratio:
+   *   imgH = colW / ar, tile height = imgH + captionH. One greedy O(n·cols) pass, then an
+   *   LPT balancing pass re-drops the trailing BALANCE_TAIL_COLS·cols tiles tallest-first to
+   *   flatten the ragged bottom.
+   *
+   * Placement stability
+   *   Column assignment runs on UNIT-LESS ratios (gap/colW, captionH/colW) measured against a
+   *   NOMINAL column width that depends only on the column count — never on the actual width.
+   *   So any width change that keeps the column count leaves the assignment bit-identical and
+   *   only the pixels reflow: tiles never re-shuffle on resize (verified, 0 jumps over
+   *   1000→1400px in 5px steps with 300 items). The pixel replay then uses the exact width.
+   *
+   *   Appending items is prefix-stable EXCEPT for the balancing pass, which re-drops the last
+   *   BALANCE_TAIL_COLS·cols tiles. Appending a page therefore reshuffles only the trailing
+   *   3·cols tiles of the previous page. Set BALANCE_TAIL_COLS = 0 for total append-stability,
+   *   at the cost of a raggeder bottom edge.
+   *
+   * The only intentional distortion is the 1:1 boost: near-square images render TALLER than
+   * native by up to `opts.boost`×. Set opts.boost = 1 for zero distortion.
+   *
+   * Tunables live in the CONSTANTS block at the top of the function.
+   */
+  function layoutMasonry(items, opts) {
+    // ── tunables ─────────────────────────────────────────────────────────────
+    const MAX_COLS = 16;          // hard ceiling on column count at any width
+    const MIN_TILES_PER_COL = 2;  // fewer than this per column and the bottom edge shreds
+    const MIN_COL_W = 60;         // safety floor: drop a column rather than emit a sliver
+    const BOOST_WINDOW = 0.25;    // 1:1 boost fades to 1 at ±25% off square (see note below)
+    const MAX_TILE_H = 2.4;       // clamp: image box never taller than 2.4× its width
+    const MIN_IMG_H = 24;         // absolute floor on an image box, in px
+    const BALANCE_TAIL_COLS = 0;  // LPT re-drop the last 3·cols tiles; 0 disables balancing
+    const WIDE_SQUARES = false;   // BAKED OFF: span a share of true squares across 2 columns
+    const WIDE_SHARE = 0.30;      // ...how many of them, when WIDE_SQUARES is on
+    const WIDE_MIN_COLS = 3;      // ...and only from this column count up
+    const WIDE_AR_TOL = 0.06;     // ...|ln(ar)| under this counts as "a true square"
+    // (the demo's GAP_BUCKET/CAP_BUCKET quantisation is gone — the assignment now uses a
+    //  nominal column width derived from cols alone, which is exactly stable, not merely
+    //  stable-within-a-bucket. See "Placement stability" above.)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // NOTE on the boost curve: this algorithm does NOT use the shared
+    // exp(-ln(ar)^2 / 2σ^2) gaussian, so the σ≈0.16 retune does not apply. It uses a
+    // smoothstep over a hard window in log-AR space, which is compactly supported: with
+    // BOOST_WINDOW = 0.25 the boost is exactly 1 (zero leak) for every |ln(ar)| >= ln(1.25),
+    // i.e. 4:3 gets 0%, 16:9 gets 0%, 21:9 gets 0%. Only ar in (0.80, 1.25) is touched.
+
+    const out = { height: 0, tiles: [] };
+    if (!items || items.length === 0) return out;
+
+    const n = items.length;
+    const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+    const o = opts || {};
+    const W = Math.max(1, num(o.width, 0));
+    const gap = Math.max(0, num(o.gap, 0));
+    const target = Math.max(1, num(o.target, 240));
+    const capH = Math.max(0, num(o.captionH, 0));
+    const boost = Math.max(1, num(o.boost, 1));
+    const boostPh = o.boostPlaceholders !== false;
+
+    // ── column count: round to target, then flex the columns to fill the width ──
+    let cols = Math.round(W / target) || 1;
+    cols = Math.max(1, Math.min(MAX_COLS, cols));
+    cols = Math.min(cols, Math.max(1, Math.ceil(n / MIN_TILES_PER_COL)));
+    while (cols > 1 && (W - (cols - 1) * gap) / cols < MIN_COL_W) cols--;
+    const colW = Math.max(1, (W - (cols - 1) * gap) / cols);
+
+    // ── boost / effective aspect ratio ─────────────────────────────────────────
+    const arOf = (it) => {
+      const a = it && typeof it.ar === 'number' && isFinite(it.ar) && it.ar > 0 ? it.ar : 1;
+      return Math.min(1000, Math.max(0.001, a));
+    };
+
+    const winLog = Math.log(1 + BOOST_WINDOW);
+    function boostFor(it) {
+      if (boost <= 1) return 1;
+      if (it.placeholder && !boostPh) return 1;
+      const d = Math.abs(Math.log(arOf(it)));      // 0 at exactly 1:1
+      if (d >= winLog) return 1;                   // compact support: no leak past the window
+      const t = 1 - d / winLog;
+      return 1 + (boost - 1) * (t * t * (3 - 2 * t));  // smoothstep
+    }
+
+    // deterministic 0..1 from an opaque string id (only used by the WIDE_SQUARES path)
+    function hash01(id) {
+      const s = String(id == null ? '' : id);
+      let h = 2166136261 >>> 0;
+      for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619) >>> 0;
+      }
+      return (h % 100000) / 100000;
+    }
+
+    const isWide = (it) =>
+      WIDE_SQUARES && cols >= WIDE_MIN_COLS &&
+      Math.abs(Math.log(arOf(it))) < WIDE_AR_TOL && hash01(it.id) < WIDE_SHARE;
+
+    /** rendered AR of the image box; 2-column tiles are never height-boosted. */
+    function renderAR(it, span) {
+      let ar = span === 2 ? arOf(it) : arOf(it) / boostFor(it);
+      if (1 / ar > MAX_TILE_H) ar = 1 / MAX_TILE_H;   // clamp absurdly tall strips
+      return ar;
+    }
+
+    // ── phase 1: column assignment, on width-independent unit-less ratios ──────
+    // The assignment is packed against a NOMINAL column width — the width this many
+    // columns would have at exactly the requested target — not the actual one. So the
+    // assignment is a function of (cols, gap, target, captionH, boost) only: any width
+    // change that leaves the column count alone reflows pixels and moves nobody.
+    const nomColW = Math.max(1, (cols * target - (cols - 1) * gap) / cols);
+    const gr = gap / nomColW;
+    const capR = capH / nomColW;
+
+    const H = new Float64Array(cols);                    // unit-less column heights
+    const tops = [];
+    for (let i = 0; i < cols; i++) tops.push([]);
+    const entries = new Array(n);
+    let seq = 0;
+
+    for (let i = 0; i < n; i++) {
+      const it = items[i];
+      const span = isWide(it) && cols >= 2 ? 2 : 1;
+      const wN = span === 2 ? 2 + gr : 1;
+      const hn = wN / renderAR(it, span) + capR;
+      let col = 0, best = Infinity;
+      if (span === 2) {
+        for (let k = 0; k <= cols - 2; k++) {
+          const v = Math.max(H[k], H[k + 1]);
+          if (v < best - 1e-9) { best = v; col = k; }
+        }
+      } else {
+        for (let k = 0; k < cols; k++) if (H[k] < best - 1e-9) { best = H[k]; col = k; }
+      }
+      const y = span === 2 ? Math.max(H[col], H[col + 1]) : H[col];
+      const e = { it, col, span, hn, seq: seq++, y };
+      entries[i] = e;
+      for (let k = 0; k < span; k++) { H[col + k] = y + hn + gr; tops[col + k].push(e); }
+    }
+
+    // Balancing pass: lift the trailing tiles off every column and re-drop them
+    // tallest-first into whichever column is shortest (LPT scheduling) — the classic fix
+    // for a ragged bottom. Only the tail moves, so order drift stays local.
+    if (BALANCE_TAIL_COLS > 0 && cols > 1 && n > cols) {
+      const K = Math.min(n - 1, cols * BALANCE_TAIL_COLS);
+      const bySeq = entries.slice().sort((a, b) => b.seq - a.seq);
+      const pool = [];
+      for (let i = 0; i < bySeq.length && pool.length < K; i++) {
+        const e = bySeq[i], st = tops[e.col];
+        if (e.span !== 1 || st[st.length - 1] !== e) break;   // stop at a 2-col tile
+        st.pop(); H[e.col] = e.y; pool.push(e);
+      }
+      pool.sort((a, b) => (b.hn - a.hn) || (a.seq - b.seq));  // longest first, ties by input order
+      for (let i = 0; i < pool.length; i++) {
+        const e = pool[i];
+        let col = 0, best = Infinity;
+        for (let k = 0; k < cols; k++) if (H[k] < best - 1e-9) { best = H[k]; col = k; }
+        e.col = col; e.y = H[col]; e.seq = seq++;
+        H[col] = e.y + e.hn + gr; tops[col].push(e);
+      }
+    }
+
+    entries.sort((a, b) => a.seq - b.seq);   // replay in per-column stacking order
+
+    // ── phase 2: exact pixel replay ────────────────────────────────────────────
+    const Hp = new Float64Array(cols);
+    const tiles = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const e = entries[i];
+      const w = e.span === 2 ? 2 * colW + gap : colW;
+      const imgH = Math.max(MIN_IMG_H, w / renderAR(e.it, e.span));
+      const th = imgH + capH;
+      const y = e.span === 2 ? Math.max(Hp[e.col], Hp[e.col + 1]) : Hp[e.col];
+      for (let k = 0; k < e.span; k++) Hp[e.col + k] = y + th + gap;
+      tiles[i] = { id: e.it.id, x: e.col * (colW + gap), y: y, w: w, imgH: imgH };
+    }
+
+    let bottom = 0;
+    for (let i = 0; i < cols; i++) {
+      const b = Hp[i] > 0 ? Hp[i] - gap : 0;
+      if (b > bottom) bottom = b;
+    }
+
+    out.height = bottom > 0 && isFinite(bottom) ? bottom : 0;
+    out.tiles = tiles;
+    return out;
+  }
+
+    /* ====================================================================== *
+   *  layoutStacked — justified rows whose slots may be VERTICAL STACKS
+   *  (extracted from demo 07 "justified rows + vertical stacking")
+   *
+   *  A row is partitioned into slots. A slot holds 1..MAX_STACK_DEPTH
+   *  consecutive items rendered at one shared width w. Its height is exact:
+   *
+   *      H = w * Σ(1/ARᵢ) + k*captionH + (k-1)*gap
+   *
+   *  i.e. one caption strip per stacked member and a gap between members.
+   *  Writing S = Σ(1/ARᵢ) and O = k*cap + (k-1)*gap, a slot at row height H
+   *  has w = (H - O) / S, so justifying Σw + (m-1)*gap = W gives the row
+   *  height in closed form:  H = (W - (m-1)*gap + Σ(O/S)) / Σ(1/S).
+   *
+   *  A forward DP (shortest path over break positions) chooses the row breaks
+   *  AND the slot partition inside each row in one pass. Its objective targets
+   *  TILE SCALE (√area, log-mean over the row) rather than row height: a
+   *  stacked member is smaller than its row, so a row containing a stack is
+   *  allowed — indeed required — to grow, and that growth is exactly what
+   *  enlarges the un-stacked tiles beside it.
+   *
+   *  The 1:1 boost lifts a row's scale target with its mean squareness, pays
+   *  for width given to square items, and makes stacking a square expensive.
+   *  The DP responds by stacking the WIDE items into near-square slots while
+   *  squares/placeholders stand alone at full row height.
+   *
+   *  Ratios are never distorted and nothing is cropped: imgH is always w/ar.
+   *
+   *  Pure: no DOM, no globals, no randomness, no time. Never throws.
+   * ====================================================================== */
+
+  function layoutStacked(items, opts) {
+    /* ── tunables (everything not taken from opts) ───────────────────── */
+    const MAX_STACK_DEPTH  = 2;    // shipped depth; set to 3 to allow triples
+    const STACK_MIN_WIDTH  = 520;  // px — below this, stacking is off (a row holds <2 items)
+    const SIGMA            = 0.16; // log-AR width of the "square-ish" kernel (retuned: 4:3 keeps ~20%, 16:9 ~0%)
+    const EAGER            = 0.78; // stack eagerness 0..1; >0.5 makes stacking cheap
+    const W_SCALE          = 5.0;  // weight on (log tile-scale error)² per item
+    const W_BOOST          = 1.00; // weight on square-item width gain
+    const W_BOUND          = 30.0; // weight on row height leaving [minRowH, maxRowH]
+    const W_STACK          = 0.80; // base per-extra-member stack cost at eagerness .5
+    const W_STACKSQ        = 0.90; // extra reluctance to stack a square (scaled by boost)
+    const W_STACKMIN       = 0.25; // floor reluctance to stack a square, even at boost 0
+    const W_FORCED         = 40.0; // cost of a fallback row that ignores the min-size guards
+    const MIN_SLOT_W       = 44;   // px — narrower than this the caption is unreadable
+    const MIN_SLOT_AR      = 0.24; // a slot may not be narrower than this (w / rowH)
+    const MIN_IMG_H        = 52;   // px — no stacked member may be shorter than this
+    const ROW_MIN_FRAC     = 0.55; // minRowH = target * this
+    const ROW_MAX_FRAC     = 3.0;  // maxRowH = target * (1+boost) * this
+    const SCALE_BOOST_GAIN = 0.55; // how much mean squareness lifts a row's scale target
+    const LAST_ROW_SLACK   = 1.2;  // last row may reach this × the scale target before clamping
+    const LAST_ROW_WEIGHT  = 0.25; // last row's scale error counts this much (it is not justified)
+    const BOOST_CLAMP      = 1.2;  // clamp on log width-gain, so one slot cannot dominate
+    const ROW_ITEMS_MIN    = 4;    // partition search: never look at fewer than this many items
+    const ROW_ITEMS_MAX    = 12;   // partition search: never look at more than this many items
+    const AR_MIN = 0.05, AR_MAX = 20;   // sanity clamp on incoming aspect ratios
+    const FALLBACK_H_FRAC  = 2.0;  // safety-net rows are capped at target × this
+
+    /* ── input sanitising: this function must be total ───────────────── */
+    if (!items || typeof items.length !== 'number' || items.length === 0) {
+      return { height: 0, tiles: [] };
+    }
+    const n = items.length;
+
+    const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+    const o = opts || {};
+    const W    = Math.max(1, num(o.width, 800));
+    const G    = Math.max(0, num(o.gap, 8));
+    const C    = Math.max(0, num(o.captionH, 0));
+    const base = Math.min(4000, Math.max(40, num(o.target, 250)));
+    const boost = Math.min(4, Math.max(0, num(o.boost, 0)));
+    const boostPh = o.boostPlaceholders !== false;
+
+    const ar = new Float64Array(n);
+    const sq = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const it = items[i] || {};
+      let a = num(it.ar, 1);
+      if (!(a > 0)) a = 1;
+      if (a < AR_MIN) a = AR_MIN; else if (a > AR_MAX) a = AR_MAX;
+      ar[i] = a;
+      if (it.placeholder && !boostPh) { sq[i] = 0; }
+      else { const l = Math.log(a); sq[i] = Math.exp(-(l * l) / (2 * SIGMA * SIGMA)); }
+    }
+
+    /* ── prefix sums so any slot's stats are O(1) ────────────────────── */
+    const PI = new Float64Array(n + 1);  // Σ 1/ar
+    const PS = new Float64Array(n + 1);  // Σ squareness
+    const PL = new Float64Array(n + 1);  // Σ squareness · log(reference width)
+    const PA = new Float64Array(n + 1);  // Σ log(ar)
+    const refBase = Math.max(30, base - C);   // √area of a square tile at target
+    for (let i = 0; i < n; i++) {
+      PI[i + 1] = PI[i] + 1 / ar[i];
+      PS[i + 1] = PS[i] + sq[i];
+      PL[i + 1] = PL[i] + (sq[i] > 0 ? sq[i] * Math.log(ar[i] * refBase) : 0);
+      PA[i + 1] = PA[i] + Math.log(ar[i]);
+    }
+
+    /* ── DP setup ────────────────────────────────────────────────────── */
+    // Narrow containers hold barely one item per row; a "stack" there is just a
+    // one-slot column, so switch stacking off rather than pay for the search.
+    // (3 is a hard ceiling: the winning partition is packed 2 bits per slot.)
+    const MAXD = W >= STACK_MIN_WIDTH ? Math.min(3, Math.max(1, MAX_STACK_DEPTH)) : 1;
+    const minRowH = Math.max(C + 34, base * ROW_MIN_FRAC);
+    const maxRowH = base * (1 + boost) * ROW_MAX_FRAC;
+    const MAXITEMS = Math.max(ROW_ITEMS_MIN,
+                     Math.min(ROW_ITEMS_MAX, Math.ceil(W / (base * 0.8)) + 2));
+    const MAXSLOTS = MAXITEMS;
+    const stackUnit = (1 - 2 * EAGER) * W_STACK;
+
+    const cost = new Float64Array(n + 1).fill(Infinity);
+    const backFrom = new Int32Array(n + 1).fill(-1);
+    const backH    = new Float64Array(n + 1);
+    // Winning partition packed as 2 bits per slot (member count 1..3, LSB = first
+    // slot, a zero pair terminates). Avoids allocating in the DP's inner loop.
+    const backPart = new Int32Array(n + 1);
+    cost[0] = 0;
+
+    // scratch partition, indexed by slot number
+    const pStart = new Int32Array(MAXSLOTS + 2);
+    const pLen   = new Int32Array(MAXSLOTS + 2);
+    const pS     = new Float64Array(MAXSLOTS + 2);
+    const pO     = new Float64Array(MAXSLOTS + 2);
+    const pMaxAR = new Float64Array(MAXSLOTS + 2);  // widest member ⇒ shortest image
+
+    let start = 0;
+
+    // Admissible lower bound on a candidate row's cost: every term is >= 0 except
+    // the boost credit, which is bounded by BOOST_CLAMP per unit of squareness.
+    // Used only to skip work that provably cannot improve cost[end]; it never
+    // changes the chosen layout.
+    const boostFloor = boost * W_BOOST * BOOST_CLAMP;
+    function canBeat(end, stackPen) {
+      return cost[start] + stackPen - boostFloor * (PS[end] - PS[start]) < cost[end];
+    }
+
+    function evalRow(m, end, H, sumSq, stackPen, forced) {
+      const cnt = end - start;
+      const terminal = (end === n);
+      const meanSq = sumSq / cnt;
+      // Target *tile scale* (√area), not row height.
+      const scaleTarget = refBase * (1 + SCALE_BOOST_GAIN * boost * meanSq);
+
+      let Hu = H;
+      if (terminal) {
+        // The last row is not justified against a following row; clamp it so a
+        // leftover item cannot become a monster, then left-align it.
+        const r = cnt / m;
+        const capH = r * (scaleTarget * LAST_ROW_SLACK + C) + (r - 1) * G;
+        if (Hu > capH) Hu = capH;
+      }
+      if (!(Hu > 0) || !isFinite(Hu)) return false;
+
+      let sumLogW = 0, boostTerm = 0;
+      for (let j = 0; j < m; j++) {
+        const w = (Hu - pO[j]) / pS[j];
+        if (!(w > 0) || !isFinite(w)) return false;
+        if (!forced && (w < MIN_SLOT_W || w / Hu < MIN_SLOT_AR
+                        || w / pMaxAR[j] < MIN_IMG_H)) return false;
+        const lw = Math.log(w);
+        sumLogW += pLen[j] * lw;
+        if (boost > 0) {
+          const a = pStart[j], b = a + pLen[j];
+          const ssq = PS[b] - PS[a];
+          if (ssq > 0.02) {
+            let g = lw - (PL[b] - PL[a]) / ssq;
+            if (g > BOOST_CLAMP) g = BOOST_CLAMP; else if (g < -BOOST_CLAMP) g = -BOOST_CLAMP;
+            boostTerm -= boost * W_BOOST * ssq * g;
+          }
+        }
+      }
+
+      // tile scale √area = w / √ar  ⇒  log-mean scale over the row
+      const logScale = (sumLogW - 0.5 * (PA[end] - PA[start])) / cnt;
+      const dev = logScale - Math.log(scaleTarget);
+      let c = cnt * W_SCALE * dev * dev * (terminal ? LAST_ROW_WEIGHT : 1)
+            + boostTerm + stackPen;
+      if (!terminal) {
+        if (Hu < minRowH)      c += W_BOUND * Math.pow(Math.log(minRowH / Hu), 2);
+        else if (Hu > maxRowH) c += W_BOUND * Math.pow(Math.log(Hu / maxRowH), 2);
+      }
+      if (forced) c += W_FORCED;
+      if (!isFinite(c)) return false;
+
+      const tot = cost[start] + c;
+      if (tot < cost[end]) {
+        let part = 0;
+        for (let j = m - 1; j >= 0; j--) part = (part << 2) | (pLen[j] & 3);
+        cost[end] = tot;
+        backFrom[end] = start;
+        backH[end] = Hu;
+        backPart[end] = part;
+      }
+      return true;
+    }
+
+    function rec(pos, m, A, B, sumSq, stackPen) {
+      const maxD = Math.min(MAXD, n - pos);
+      for (let d = 1; d <= maxD; d++) {
+        const S = PI[pos + d] - PI[pos];
+        const O = d * C + (d - 1) * G;
+        if (d > 1) {
+          // reject absurdly tall slots outright (two portraits stacked, etc.)
+          const effAR = 1 / (S * (1 + (O / (base * 1.6))));
+          if (effAR < MIN_SLOT_AR) break;
+        }
+        let maxAR = ar[pos];
+        for (let t = 1; t < d; t++) if (ar[pos + t] > maxAR) maxAR = ar[pos + t];
+        pStart[m] = pos; pLen[m] = d; pS[m] = S; pO[m] = O; pMaxAR[m] = maxAR;
+
+        const A2 = A + 1 / S, B2 = B + O / S, m2 = m + 1, pos2 = pos + d;
+        const sq2 = sumSq + (PS[pos2] - PS[pos]);
+        let sp = stackPen;
+        // stacking squares is what we are trying to avoid: penalise it even at boost 0
+        if (d > 1) sp += (d - 1) * stackUnit
+                       + (W_STACKMIN + boost * W_STACKSQ) * (PS[pos2] - PS[pos]);
+
+        const H = (W - (m2 - 1) * G + B2) / A2;
+        const forced = (m2 === 1 && d === 1);   // the always-available fallback row
+        if (H < maxRowH * 1.8 || pos2 === n) {
+          if (forced) {
+            if (!evalRow(1, pos2, H, sq2, sp, false)) {
+              evalRow(1, pos2, H, sq2, sp, true);   // keep the DP reachable
+            }
+          } else if (canBeat(pos2, sp)) {
+            evalRow(m2, pos2, H, sq2, sp, false);
+          }
+        } else if (forced) {
+          evalRow(1, pos2, H, sq2, sp, true);
+        }
+
+        if (pos2 < n && m2 < MAXSLOTS && (pos2 - start) < MAXITEMS && H > minRowH) {
+          rec(pos2, m2, A2, B2, sq2, sp);
+        }
+      }
+    }
+
+    for (let i = 0; i < n; i++) {
+      if (!isFinite(cost[i])) continue;
+      start = i;
+      rec(i, 0, 0, 0, 0, 0);
+    }
+
+    /* ── walk the chain of row breaks back from n ────────────────────── */
+    const order = [];              // break positions, descending
+    let k = n, guard = 0, ok = true;
+    while (k > 0 && guard++ <= n) {
+      if (backFrom[k] < 0) { ok = false; break; }
+      order.push(k);
+      k = backFrom[k];
+    }
+    if (k !== 0) ok = false;
+
+    const tiles = new Array(n);
+    let y = 0;
+
+    if (ok) {
+      for (let r = order.length - 1; r >= 0; r--) {
+        const end = order[r], H = backH[end];
+        let x = 0, pos = backFrom[end];
+        for (let bits = backPart[end]; bits !== 0; bits >>>= 2) {
+          const d = bits & 3;
+          const S = PI[pos + d] - PI[pos];          // Σ 1/AR over the slot
+          const O = d * C + (d - 1) * G;            // one caption per member + inner gaps
+          const w = Math.max(0, (H - O) / S);       // closed-form slot width
+          let yy = y;
+          for (let t = 0; t < d; t++) {
+            const i = pos + t;
+            const imgH = w / ar[i];
+            tiles[i] = { id: items[i] ? items[i].id : i, x: x, y: yy, w: w, imgH: imgH };
+            yy += imgH + C + G;
+          }
+          x += w + G;
+          pos += d;
+        }
+        y += H + G;
+      }
+      y = Math.max(0, y - G);
+    }
+
+    /* ── safety net: single column, ratios intact, height-capped ─────── */
+    // Unreachable in practice (a one-item row is always feasible), but this
+    // function must never drop, duplicate or NaN an item.
+    if (!ok) { y = 0; for (let i = 0; i < n; i++) tiles[i] = null; }
+    let cursor = y > 0 ? y + G : 0, fixups = 0;
+    for (let i = 0; i < n; i++) {
+      const t = tiles[i];
+      if (t && isFinite(t.x) && isFinite(t.y) && t.w > 0 && isFinite(t.w)
+            && t.imgH > 0 && isFinite(t.imgH) && t.x + t.w <= W + 0.5) continue;
+      fixups++;
+      let imgH = W / ar[i], w = W;
+      const capH = base * FALLBACK_H_FRAC;
+      if (imgH > capH) { imgH = capH; w = imgH * ar[i]; }
+      if (!(w > 0) || !isFinite(w)) { w = W; imgH = Math.max(1, W / 2); }
+      if (w > W) w = W;
+      tiles[i] = { id: items[i] ? items[i].id : i, x: 0, y: cursor, w: w, imgH: imgH };
+      cursor += imgH + C + G;
+    }
+    if (fixups > 0) y = Math.max(y, cursor - G);
+
+    return { height: y > 0 ? y : 0, tiles: tiles };
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────────
+   * layoutBsp — recursive binary space partition, in bands of N
+   *
+   * Items are cut into contiguous bands of BAND_N. Each band is a rectangle that is
+   * split recursively in two; every split takes a *contiguous* run of the band, so
+   * input order is preserved and the band tiles exactly — the only whitespace in a
+   * full band is the gap allowance itself.
+   *
+   *   PASS 1  greedy top-down build: for each run, search split index × orientation
+   *           × position offsets, scoring with a cheap analytic estimate of how
+   *           badly a run of m items fits a rectangle.
+   *   PASS 2  coordinate descent: structure frozen, every split position, its
+   *           orientation and the band height are re-solved against the EXACT
+   *           per-leaf error (aspect² + over-stretch clamp + earned-footprint²).
+   *
+   * Caption height and gaps live INSIDE the geometry: a leaf's image box is
+   * (cellW − gap) × (cellH − gap − captionH), and that is what is scored against
+   * the item's native aspect ratio, so leaves hit their ratio after the caption
+   * has been paid for.
+   *
+   * Trade-off, stated up front: exact tiling is bought with aspect distortion.
+   * This algorithm intentionally does NOT preserve w/imgH == ar. MAX_STRETCH and
+   * CLAMP_PEN own that tail; loosening them buys more uniform tile sizes and costs
+   * ratio fidelity. Measured with MAX_STRETCH 1.15 / CLAMP_PEN 600, across widths
+   * 280…2000 and counts 7/60/300: |w/imgH ÷ ar − 1| median 10%, p90 15%, p99 18%,
+   * max 25%.
+   *
+   * Bands are chunked at fixed BAND_N boundaries, so APPENDING items cannot move
+   * any item in a completed band — see the "band partition" note near the bottom.
+   * ────────────────────────────────────────────────────────────────────────────*/
+
+  function layoutBsp(items, opts) {
+    /* ── baked-in tunables ─────────────────────────────────────────────────── */
+    const BAND_N      = 12;          // items per band; band = one independent BSP tree
+    const MIN_TAIL    = 5;           // a trailing band smaller than this is merged into the previous one
+    const MIN_IMG     = 30;          // smallest tolerable image-box height, px
+    const MIN_W       = 42;          // smallest tolerable tile width, px
+    const SIG         = 0.16;        // squareness kernel width in log-aspect nats (retuned per contract §8)
+    const SOFT        = 0.12;        // always-on aspect gradient so the search has signal at high nodes
+    const FLEX        = 0.70;        // aspect mismatch (nats) a run of m items absorbs for free: FLEX·ln m
+    const MAX_STRETCH = 1.15;        // soft clamp on rendered/native ratio; past this the penalty bites hard
+    const CLAMP_PEN   = 600;         // penalty multiplier past MAX_STRETCH (this pair owns the distortion tail)
+    const AREA_FID    = 0.30;        // exchange rate between a tile's earned footprint and its ratio
+    const LN_MAX_AREA = Math.log(2.1); // hard-ish barrier on how far a tile may miss its earned area
+    const AREA_BARRIER= 9;           // penalty multiplier past LN_MAX_AREA
+    const MINSZ_PEN   = 12;          // penalty multiplier for undershooting MIN_W / MIN_IMG
+    const BALANCE     = 0.015;       // gentle guard against degenerate 1-vs-rest split chains
+    const POS_PEN     = 0.07;        // regulariser on moving a split off its weight-proportional point
+    const HPEN        = 0.50;        // cost of a band drifting off its ideal (target-tile-size) height
+    const SWEEPS      = 2;           // alternating (band height, split positions) descent passes
+    const POS_SPAN    = 0.66;        // pass-1 split-offset search half-range, in log units
+    const POS_STEPS   = 3;           // pass-1 offsets per side (⇒ 2·POS_STEPS+1 candidates)
+    const REFINE_ITERS= 3;           // bracket-narrowing rounds inside each pass-2 line search
+    const AR_LO       = 0.05;        // sanitising clamp on incoming aspect ratios
+    const AR_HI       = 20;
+    const BIG         = 1e12;
+
+    /* ── input sanitising ──────────────────────────────────────────────────── */
+    if (!items || !items.length) return { height: 0, tiles: [] };
+    const n = items.length;
+
+    const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+    const o = opts || {};
+    const gap      = Math.max(0, num(o.gap, 8));
+    const CAP      = Math.max(0, num(o.captionH, 0));
+    const target   = Math.max(40, num(o.target, 200));
+    const boost    = Math.max(0, num(o.boost, 0));
+    const boostPh  = o.boostPlaceholders !== false;
+    const contentW = Math.max(40, num(o.width, 800));
+
+    // Work in a region that is one gap wider than the content box and offset by
+    // half a gap; every leaf then loses `gap` of its cell, which lands the outer
+    // tiles flush against 0 and `contentW`.
+    const W = contentW + gap;
+
+    const CELL      = target * target;       // image area a weight-1 tile aims for
+    const LNSTRETCH = Math.log(Math.max(1.02, MAX_STRETCH));
+    const HMIN      = CAP + gap + MIN_IMG + 2;
+
+    /* ── per-item weights and prefix sums ──────────────────────────────────── */
+    const PA = new Float64Array(n + 1);      // prefix Σ area weight
+    const PL = new Float64Array(n + 1);      // prefix Σ weight · ln(ar)
+    const PW = new Float64Array(n + 1);      // prefix Σ single-row width at earned area + native ratio
+    const LNAR = new Float64Array(n);
+    const TARGA = new Float64Array(n);       // earned image area
+    const LTARGA = new Float64Array(n);
+
+    for (let i = 0; i < n; i++) {
+      const it = items[i] || {};
+      let ar = num(it.ar, 1);
+      if (!(ar > 0)) ar = 1;
+      if (ar < AR_LO) ar = AR_LO; else if (ar > AR_HI) ar = AR_HI;
+      const l = Math.log(ar);
+      let s = Math.exp(-(l * l) / (2 * SIG * SIG));   // squareness kernel
+      if (it.placeholder && !boostPh) s = 0;
+      const wgt = 1 + boost * s;
+      LNAR[i] = l;
+      PA[i + 1] = PA[i] + wgt;
+      PL[i + 1] = PL[i] + wgt * l;
+      TARGA[i] = wgt * CELL;
+      LTARGA[i] = Math.log(TARGA[i]);
+      PW[i + 1] = PW[i] + Math.sqrt(TARGA[i] * ar) + gap;
+    }
+
+    /* split-position candidates: multiplicative offsets around the
+       weight-proportional split point */
+    const POS = [];
+    for (let i = -POS_STEPS; i <= POS_STEPS; i++) POS.push(POS_SPAN * i / POS_STEPS);
+    const POS_MID = POS_STEPS;
+
+    /* ── exact error of one leaf placed in a w×h cell ──────────────────────── */
+    function leafErr(i, w, h) {
+      const iw = w - gap, ih = h - gap - CAP;
+      if (iw <= 6 || ih <= 6) return TARGA[i] * 5e3;
+      const lw = Math.log(iw), lh = Math.log(ih);
+      const d = lw - lh - LNAR[i];                  // log ratio error
+      let c = d * d;
+      const ad = (d < 0 ? -d : d) - LNSTRETCH;
+      if (ad > 0) c += CLAMP_PEN * ad * ad;         // soft max-stretch clamp
+      const la = lw + lh - LTARGA[i];               // log footprint error
+      c += AREA_FID * la * la;
+      const ao = (la < 0 ? -la : la) - LN_MAX_AREA;
+      if (ao > 0) c += AREA_BARRIER * ao * ao;      // barrier against size outliers
+      if (iw < MIN_W)   { const u = MIN_W / iw - 1;   c += MINSZ_PEN * u * u; }
+      if (ih < MIN_IMG) { const u = MIN_IMG / ih - 1; c += MINSZ_PEN * u * u; }
+      return TARGA[i] * c;
+    }
+
+    /* ── estimated cost of placing items[lo,hi) in a w×h rectangle ─────────── */
+    function est(lo, hi, w, h) {
+      const m = hi - lo;
+      if (w <= MIN_W + gap || h <= MIN_IMG + CAP + gap) return BIG + BIG * m;
+      const A = PA[hi] - PA[lo];
+      const G = (PL[hi] - PL[lo]) / A;              // area-weighted mean log aspect
+      const eG = Math.exp(G);
+      let q = Math.sqrt(m), wE = w - gap, hE = h - (CAP + gap), Ae = 1;
+      for (let t = 0; t < 4; t++) {                 // guess a rows×cols shape, pay its chrome
+        const p = m / q;
+        wE = w - p * gap; hE = h - q * (CAP + gap);
+        if (wE <= MIN_W * 0.5 || hE <= MIN_IMG * 0.5) return BIG;
+        Ae = wE / hE;
+        q = Math.min(m, Math.max(1, Math.sqrt(m * eG / Ae)));
+      }
+      if (wE <= 1 || hE <= 1) return BIG;
+      const d = Math.abs(Math.log(Ae) - G);
+      let resid = d - FLEX * Math.log(m);
+      if (resid < 0) resid = 0;
+      // NB: weight by the area this run *deserves*, never by the rect it was handed —
+      // otherwise the search learns it can make an error cheap by shrinking the tile.
+      const wgt = A * CELL;
+      let cost = wgt * (resid * resid + SOFT * d * d);
+      if (m === 1) {
+        const over = d - LNSTRETCH;
+        if (over > 0) cost += wgt * CLAMP_PEN * over * over;
+        const iw = w - gap, ih = h - gap - CAP;
+        const minA = MIN_W * MIN_IMG;
+        if (iw * ih < minA) cost += BIG * 1e-4 * (minA - iw * ih);
+        // hold the leaf near the footprint its area weight earned (this is what the
+        // 1:1 boost buys, and it stops position drift compounding down the tree)
+        const la = Math.log((iw * ih) / wgt);
+        cost += wgt * AREA_FID * la * la;
+      }
+      return cost;
+    }
+
+    /* ── PASS 1: greedy top-down structure ─────────────────────────────────── */
+    function build(lo, hi, w, h) {
+      if (hi - lo === 1) return { lo, leaf: true, L: null, R: null, k: 0, o: 0, f: 0.5 };
+      const m = hi - lo;
+      const A = PA[hi] - PA[lo], area = A * CELL, ap = POS_PEN * area;
+      const stride = m <= 6 ? 1 : m <= 14 ? 2 : 3;   // coarser position search on big runs
+      let bc = Infinity, bk = lo + 1, bo = 0, bf = 0.5;
+      for (let k = lo + 1; k < hi; k++) {
+        const f0 = (PA[k] - PA[lo]) / A;
+        for (let j = POS_MID % stride; j < POS.length; j += stride) {
+          const u = POS[j];
+          const f = f0 * Math.exp(u);
+          if (f < 0.05 || f > 0.95) continue;
+          const bal = 2 * f - 1;
+          const pen = ap * u * u + BALANCE * area * bal * bal * bal * bal;
+          let c = est(lo, k, w * f, h) + est(k, hi, w * (1 - f), h) + pen;
+          if (c < bc) { bc = c; bk = k; bo = 0; bf = f; }
+          c = est(lo, k, w, h * f) + est(k, hi, w, h * (1 - f)) + pen;
+          if (c < bc) { bc = c; bk = k; bo = 1; bf = f; }
+        }
+      }
+      const node = { lo, hi, k: bk, o: bo, f: bf, leaf: false, L: null, R: null };
+      node.L = bo === 0 ? build(lo, bk, w * bf, h) : build(lo, bk, w, h * bf);
+      node.R = bo === 0 ? build(bk, hi, w * (1 - bf), h) : build(bk, hi, w, h * (1 - bf));
+      return node;
+    }
+
+    /* exact total error of a subtree placed in w×h */
+    function sub(node, w, h) {
+      if (node.leaf) return leafErr(node.lo, w, h);
+      return node.o === 0
+        ? sub(node.L, w * node.f, h) + sub(node.R, w * (1 - node.f), h)
+        : sub(node.L, w, h * node.f) + sub(node.R, w, h * (1 - node.f));
+    }
+
+    /* ── PASS 2: coordinate descent over split position + orientation ──────── */
+    function scanSplit(node, w, h) {
+      let a = 0.05, b = 0.95, bf = node.f, bo = node.o, bc = Infinity;
+      for (let s = 0; s < REFINE_ITERS; s++) {
+        const step = (b - a) / 6;
+        for (let j = 0; j <= 6; j++) {
+          const f = a + j * step;
+          let c = sub(node.L, w * f, h) + sub(node.R, w * (1 - f), h);
+          if (c < bc) { bc = c; bf = f; bo = 0; }
+          c = sub(node.L, w, h * f) + sub(node.R, w, h * (1 - f));
+          if (c < bc) { bc = c; bf = f; bo = 1; }
+        }
+        a = Math.max(0.05, bf - step); b = Math.min(0.95, bf + step);
+      }
+      node.f = bf; node.o = bo;
+    }
+    function refine(node, w, h) {
+      if (node.leaf) return;
+      scanSplit(node, w, h);
+      if (node.o === 0) { refine(node.L, w * node.f, h); refine(node.R, w * (1 - node.f), h); }
+      else { refine(node.L, w, h * node.f); refine(node.R, w, h * (1 - node.f)); }
+    }
+
+    function emit(node, x, y, w, h, out) {
+      if (node.leaf) { out.push({ i: node.lo, x, y, w, h }); return; }
+      if (node.o === 0) {
+        const w1 = w * node.f;
+        emit(node.L, x, y, w1, h, out); emit(node.R, x + w1, y, w - w1, h, out);
+      } else {
+        const h1 = h * node.f;
+        emit(node.L, x, y, w, h1, out); emit(node.R, x, y + h1, w, h - h1, out);
+      }
+    }
+
+    /* height a band of the given width needs for its tiles to average target size */
+    function idealHeight(lo, hi, Wb) {
+      const m = hi - lo;
+      const A = PA[hi] - PA[lo];
+      const eG = Math.exp((PL[hi] - PL[lo]) / A);
+      const imgArea = A * CELL;
+      let q = Math.sqrt(m), H = 0;
+      for (let t = 0; t < 6; t++) {
+        const wI = Math.max(Wb - (m / q) * gap, Wb * 0.35);
+        const hI = imgArea / wI;
+        H = hI + q * (CAP + gap);
+        q = Math.min(m, Math.max(1, Math.sqrt(m * eG / (wI / hI))));
+      }
+      if (!(H > 0) || !isFinite(H)) H = HMIN;
+      return Math.max(H, HMIN);
+    }
+
+    /* one band: build, then alternate re-solving the band height and the splits */
+    function layoutBand(lo, hi) {
+      // A band never grows past the width it would occupy as a single row of tiles
+      // at their earned area and their native ratio. Full bands are far wider than
+      // the container so this does nothing; it only stops an under-filled band
+      // (a 1–2 item result set, or a short tail) being smeared across the viewport
+      // at 5–10x its true aspect. Such a band is left-aligned and leaves real
+      // whitespace to its right — the alternative is a 2000px-wide letterbox.
+      const Wb = Math.max(MIN_W + gap, Math.min(W, PW[hi] - PW[lo]));
+      const H0 = idealHeight(lo, hi, Wb);
+      const tot = (PA[hi] - PA[lo]) * CELL;
+      const root = build(lo, hi, Wb, H0);
+      let H = H0;
+      for (let s = 0; s < SWEEPS; s++) {
+        let a = Math.max(HMIN, H0 * 0.55), b = H0 * 1.8, bh = H, bc = Infinity;
+        for (let t = 0; t < REFINE_ITERS; t++) {     // band height is just another coordinate
+          const step = (b - a) / 6;
+          for (let j = 0; j <= 6; j++) {
+            const Hc = a + j * step;
+            const u = Math.log(Hc / H0);
+            const c = sub(root, Wb, Hc) + HPEN * tot * u * u;
+            if (c < bc) { bc = c; bh = Hc; }
+          }
+          a = Math.max(HMIN, bh - step); b = bh + step;
+        }
+        H = bh;
+        refine(root, Wb, H);
+      }
+      const out = [];
+      emit(root, 0, 0, Wb, H, out);
+      return { H, out };
+    }
+
+    /* ── band partition ────────────────────────────────────────────────────── */
+    /* Cuts fall on fixed multiples of BAND_N and never depend on n, so appending
+       a page of results cannot disturb any completed band: only the final band
+       re-solves. Worst case that is the last 2·BAND_N−1 = 23 items (when a runt
+       tail has been folded back into its predecessor); when the previous list
+       ended exactly on a band boundary, nothing moves at all. */
+    const cuts = [];
+    for (let i = 0; i < n; i += BAND_N) cuts.push(i);
+    cuts.push(n);
+    if (cuts.length > 2 && n - cuts[cuts.length - 2] < MIN_TAIL) {
+      cuts.splice(cuts.length - 2, 1);   // merge the runt tail into the band before it
+    }
+
+    /* ── assemble ──────────────────────────────────────────────────────────── */
+    const tiles = new Array(n);
+    let yCursor = 0;
+    for (let b = 0; b + 1 < cuts.length; b++) {
+      const lo = cuts[b], hi = cuts[b + 1];
+      if (hi <= lo) continue;
+      const r = layoutBand(lo, hi);
+      for (let t = 0; t < r.out.length; t++) {
+        const c = r.out[t];
+        // Trim half a gap off each side of the cell. The region is one gap wider
+        // than the content box and its origin sits at −gap/2, so the two half-gaps
+        // cancel: cell x maps straight through, and the outer tiles land exactly
+        // on 0 and contentW.
+        let x = c.x;
+        let w = c.w - gap;
+        let imgH = c.h - gap - CAP;
+        if (!(w > 0.5)) w = 0.5;
+        if (!(imgH > 0.5)) imgH = 0.5;
+        if (x < 0) x = 0;
+        if (x + w > contentW) { w = Math.max(0.5, contentW - x); }
+        tiles[c.i] = {
+          id: items[c.i] ? items[c.i].id : c.i,
+          x: x,
+          y: yCursor + c.y,
+          w: w,
+          imgH: imgH,
+        };
+      }
+      yCursor += r.H;
+    }
+
+    /* the last band's bottom edge also gives back its half gap */
+    let height = yCursor - gap;
+    for (let i = 0; i < n; i++) {
+      if (!tiles[i]) tiles[i] = { id: items[i] ? items[i].id : i, x: 0, y: 0, w: 0.5, imgH: 0.5 };
+      const bottom = tiles[i].y + tiles[i].imgH + CAP;
+      if (bottom > height) height = bottom;
+    }
+    if (!(height > 0)) height = 0;
+
+    return { height, tiles };
+  }
+
+  /* Each mosaic view is one pure geometry function: given the items' aspect
+     ratios and the available width, it returns an absolute box per tile plus
+     the height of that tile's image (the caption strip sits below it). */
+  const LAYOUTS = {
+    bsp: (items, opts) => layoutBsp(items, opts),
+    masonry: (items, opts) => layoutMasonry(items, opts),
+    stacked: (items, opts) => layoutStacked(items, opts),
+  };
+
+  /* Frozen layout segments. Once a segment is full it is never re-solved, so
+     appending a page can only reflow the tail — without this, a layout whose
+     early tiles depend on later ones reshuffles what's already on screen. */
+  let mosaicBounds = [];
+  function resetMosaicSegments() { mosaicBounds = []; }
+  function mosaicSegments(n, size) {
+    if (!size || n <= 0) return [[0, n]];
+    // A shorter list (new search, tighter filter) invalidates frozen bounds.
+    while (mosaicBounds.length && mosaicBounds[mosaicBounds.length - 1] >= n) mosaicBounds.pop();
+    let last = mosaicBounds.length ? mosaicBounds[mosaicBounds.length - 1] : 0;
+    while (n - last >= size) { last += size; mosaicBounds.push(last); }
+    const segs = [];
+    let start = 0;
+    for (const b of mosaicBounds) { segs.push([start, b]); start = b; }
+    if (start < n) segs.push([start, n]);
+    return segs;
+  }
+
+  function layoutMosaic() {
+    if (!isMosaic()) return;
+    const list = byId('results-list');
+    const tiles = qsa('.mosaic-tile', list);
+    const cs = getComputedStyle(list);
+    const padL = parseFloat(cs.paddingLeft) || 0;
+    const padT = parseFloat(cs.paddingTop) || 0;
+    const padB = parseFloat(cs.paddingBottom) || 0;
+    const width = list.getBoundingClientRect().width - padL - (parseFloat(cs.paddingRight) || 0);
+    list.style.setProperty('--m-cap', MOSAIC.captionH + 'px');
+    if (!tiles.length || width <= 0) { list.style.height = ''; return; }
+
+    const byIdMap = new Map();
+    const items = tiles.map((el) => {
+      byIdMap.set(el.dataset.id, el);
+      return { id: el.dataset.id, ar: tileAR(el.dataset.id), placeholder: el.dataset.noimg === '1' };
+    });
+
+    const opts = {
+      width, gap: MOSAIC.gap, target: MOSAIC.target[state.view],
+      captionH: MOSAIC.captionH, boost: MOSAIC.boost[state.view],
+      boostPlaceholders: MOSAIC.boostPlaceholders,
+    };
+    let out;
+    try {
+      const fn = LAYOUTS[state.view];
+      const segs = mosaicSegments(items.length, MOSAIC.segment[state.view]);
+      if (segs.length === 1) {
+        out = fn(items, opts);
+      } else {
+        // Segments are laid out independently and stacked vertically; each one
+        // ends on its own partial row, which is the price of append stability.
+        const tiles = [];
+        let y = 0;
+        for (const [from, to] of segs) {
+          const part = fn(items.slice(from, to), opts);
+          for (const t of part.tiles) tiles.push({ id: t.id, x: t.x, y: t.y + y, w: t.w, imgH: t.imgH });
+          y += part.height + MOSAIC.gap;
+        }
+        out = { height: Math.max(0, y - MOSAIC.gap), tiles };
+      }
+    } catch (err) {
+      // A layout bug must not take the page down — leave the tiles unpositioned.
+      console.error('mosaic layout failed', err);
+      return;
+    }
+    if (!out || !Array.isArray(out.tiles)) return;
+
+    for (const t of out.tiles) {
+      const el = byIdMap.get(t.id);
+      if (!el) continue;
+      const imgH = Math.max(1, Math.round(t.imgH));
+      el.style.left = Math.round(padL + t.x) + 'px';
+      el.style.top = Math.round(padT + t.y) + 'px';
+      el.style.width = Math.round(t.w) + 'px';
+      el.style.height = (imgH + MOSAIC.captionH) + 'px';
+      el.querySelector('.mt-img').style.height = imgH + 'px';
+    }
+    list.style.height = Math.round(padT + out.height + padB) + 'px';
+  }
+
+  // rAF is suspended in background tabs, so a layout scheduled there would
+  // never run; the timeout is the fallback that keeps a hidden tab correct.
+  let mosaicRAF = 0, mosaicTimer = 0;
+  function scheduleMosaicLayout() {
+    if (!isMosaic() || mosaicRAF) return;
+    const run = () => {
+      cancelAnimationFrame(mosaicRAF); clearTimeout(mosaicTimer);
+      mosaicRAF = 0; mosaicTimer = 0;
+      layoutMosaic();
+    };
+    mosaicRAF = requestAnimationFrame(run);
+    mosaicTimer = setTimeout(run, 250);
+  }
+  function initMosaicResize() {
+    const wrap = byId('results-wrap');
+    if (typeof ResizeObserver !== 'function') {
+      window.addEventListener('resize', scheduleMosaicLayout);
+      return;
+    }
+    // Layout depends only on the container width, so a re-run at an unchanged
+    // width writes identical values and cannot feed itself another observation.
+    new ResizeObserver(scheduleMosaicLayout).observe(wrap);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) scheduleMosaicLayout();
+    });
+  }
 
   function buildCard(r) {
     const { item, hiddenByMute, hiddenByWord } = r;
@@ -1772,7 +2911,13 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     byId('hidden-summary').innerHTML = '';
     byId('show-hidden-btn').style.display = 'none';
     let html = '';
-    if (state.view === 'gallery') {
+    if (isMosaic()) {
+      list.style.height = '';
+      const boxes = [[300, 170], [150, 190], [230, 130], [190, 240], [260, 150], [150, 150], [210, 190], [280, 160]];
+      boxes.forEach(([w, h]) => {
+        html += `<li class="mosaic-skel skel" style="width:${w}px;height:${h + MOSAIC.captionH}px"></li>`;
+      });
+    } else if (state.view === 'gallery') {
       for (let i = 0; i < 8; i++) {
         html += `<li class="result-card">
           <div class="card-banner"><div class="skel" style="width:100%;height:100%"></div></div>
@@ -1901,11 +3046,13 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
   }
   function hideThumbPreview() { byId('thumb-preview').classList.remove('visible'); }
 
-  /* ── View mode (dense list ⇄ large-thumbnail gallery) ── */
+  /* ── View mode (dense list ⇄ gallery cards ⇄ mosaic) ── */
   function applyView() {
-    const gallery = state.view === 'gallery';
-    byId('results-list').classList.toggle('gallery', gallery);
-    byId('results-colhead').style.display = gallery ? 'none' : '';
+    const list = byId('results-list');
+    list.classList.toggle('gallery', state.view === 'gallery');
+    list.classList.toggle('mosaic', isMosaic());
+    if (!isMosaic()) list.style.height = '';
+    byId('results-colhead').style.display = state.view === 'dense' ? '' : 'none';
     qsa('#view-toggle button').forEach((b) => {
       const on = b.dataset.view === state.view;
       b.classList.toggle('active', on);
@@ -1991,6 +3138,9 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     if (tr) { tr.checked = true; setActiveRadio('type', tr); }
     const sr = document.querySelector(`input[name="sort"][value="${state.sort}"]`);
     if (sr) { sr.checked = true; setActiveRadio('sort', sr); }
+    const wi = byId('with-image-only');
+    wi.checked = state.withImageOnly;
+    wi.closest('.facet-option').classList.toggle('active', state.withImageOnly);
   }
 
   /* ── Init ─────────────────────────────────────────── */
@@ -2002,6 +3152,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     initFacetToggles();
     initColumnResize();
     initView();
+    initMosaicResize();
 
     const searchBox = byId('search-box');
     const searchClear = byId('search-clear');
@@ -2043,6 +3194,15 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
       savePrefs();
       resetAndFetch();
     }));
+
+    // Image-only filter runs client-side over the buffer, so no refetch — but
+    // it can empty the page, and render() → maybeContinue() pages on to refill.
+    byId('with-image-only').addEventListener('change', (e) => {
+      state.withImageOnly = e.target.checked;
+      e.target.closest('.facet-option').classList.toggle('active', state.withImageOnly);
+      savePrefs();
+      render();
+    });
 
     // Pipeline filter box: re-render only the pipeline list so focus stays in the input.
     const pipelineFilter = byId('pipeline-filter');
@@ -2103,6 +3263,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
       const pf = byId('pipeline-filter'); if (pf) pf.value = '';
       state.muted.clear(); state.excluded.clear();
       state.showHidden = false;
+      state.withImageOnly = false;
       syncControlsFromState();
       saveBlocklist(); savePrefs();
       resetAndFetch();
