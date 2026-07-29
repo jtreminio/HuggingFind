@@ -1338,9 +1338,24 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     return thumbStorePromise;
   }
 
-  async function thumbObjectUrl(url) {
+  /* Re-renders rebuild every tile, so the same URL is asked for again while its
+     first fetch is still in flight — and since nothing is in objectUrls yet,
+     each round re-requests it. Sharing the in-flight promise collapses those
+     duplicates; without it a burst of re-renders multiplied ~30 thumbnails
+     into 165 downloads. */
+  const inflightThumbs = new Map();   // url → Promise<object URL>
+
+  function thumbObjectUrl(url) {
     const hit = objectUrls.get(url);
-    if (hit) return hit.url;
+    if (hit) return Promise.resolve(hit.url);
+    const pending = inflightThumbs.get(url);
+    if (pending) return pending;
+    const p = fetchThumb(url).finally(() => inflightThumbs.delete(url));
+    inflightThumbs.set(url, p);
+    return p;
+  }
+
+  async function fetchThumb(url) {
     const store = await thumbStore();
     const stale = staleUrls.has(url);
     let resp = (store && !stale) ? await store.match(url).catch(() => null) : null;
