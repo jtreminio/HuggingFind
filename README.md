@@ -23,7 +23,7 @@ That's the whole pitch.
 - 🔇 **Mute annoying uploaders** — one click and every result from them is gone (until you change your mind).
 - 🚫 **Hide junk words** — never want to see `gguf` or `merge` again? Banished.
 - 🖼️ **Actually see the models** — real preview thumbnails for image stuff. Hover for a bigger look.
-- 🔀 **Two looks** — a tidy list or a big-thumbnail gallery. Flip with one button.
+- 🔀 **Two looks** — a tidy list or an image grid. Flip with one button.
 - 🌗 **Light, dark, or auto** — follows your computer like a polite app should.
 - 🔎 **Real filters** — sort by trending, most downloaded, most liked, or newest; filter by type and tags.
 - 🔑 **Optional token** — paste a Hugging Face token for higher limits. Totally optional, no pressure.

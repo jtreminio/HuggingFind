@@ -452,7 +452,7 @@ body { transition: background-color .2s ease, color .2s ease; }
 /* ─── Results: shared grid (sticky header + rows) ────── */
 #results-wrap {
   flex: 1; overflow-y: auto; overflow-x: auto; position: relative;
-  /* Reserve the scrollbar gutter so the mosaic's cell measurement isn't
+  /* Reserve the scrollbar gutter so the grid's cell measurement isn't
      invalidated by a scrollbar that its own result height brought in. */
   scrollbar-gutter: stable;
   /* Draggable column widths (persisted to localStorage). */
@@ -570,45 +570,20 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .result-row:hover .row-actions { opacity: 1; pointer-events: auto; }
 .result-row:focus-within .row-actions { opacity: 1; pointer-events: auto; }
 
-/* ─── Gallery view (large inline thumbnails) ─────────── */
-#results-list.gallery {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(218px, 1fr));
-  gap: 14px; padding: 14px 16px; min-width: 0;
-}
-.result-card {
-  position: relative; display: flex; flex-direction: column;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-  overflow: hidden; transition: border-color .12s, box-shadow .12s;
-}
-.result-card:hover { border-color: var(--border2); box-shadow: var(--shadow); }
-.result-card.is-hidden-item { opacity: .5; }
-.card-banner { position: relative; display: block; aspect-ratio: 16 / 10; overflow: hidden; text-decoration: none; }
-.card-banner img { width: 100%; height: 100%; object-fit: cover; display: block; position: relative; z-index: 1; }
-.card-banner .thumb-fallback { font-size: 38px; }
+/* Hover actions overlaid on an image; shared by the grid tiles. */
 .card-actions { position: absolute; top: 8px; right: 8px; z-index: 3; opacity: 0; transition: opacity .12s; }
-.result-card:hover .card-actions, .result-card:focus-within .card-actions { opacity: 1; }
 .card-actions .act-btn { background: rgba(0,0,0,.55); border-color: rgba(255,255,255,.28); color: #fff; backdrop-filter: blur(2px); }
 .card-actions .act-btn:hover { background: var(--red); border-color: var(--red); color: #fff; }
-.card-body { padding: 9px 11px 11px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.card-title { font-size: 12.5px; line-height: 1.3; color: var(--text); text-decoration: none;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
-.card-title .row-name { font-weight: 600; }
-.card-title:hover .row-name { color: var(--accent2); text-decoration: underline; }
-.card-stats { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 11px; color: var(--text2); }
-.card-stats .cs { display: inline-flex; align-items: center; gap: 3px; }
-.card-stats .cs-date { margin-left: auto; color: var(--text3); }
-.card-badges { display: flex; gap: 4px; flex-wrap: wrap; }
-.card-tags { display: flex; gap: 4px; flex-wrap: wrap; max-height: 19px; overflow: hidden; }
 
-/* ─── Mosaic view ─────────────────────────────────────
-   All three share this shell: the layout function returns absolute positions
-   and an image height per tile, and every tile carries a fixed caption strip
-   below its image — the layout math already paid for that strip's height. */
-#results-list.mosaic {
+/* ─── Grid view ───────────────────────────────────────
+   The layout function returns absolute positions and an image height per tile,
+   and every tile carries a fixed caption strip below its image — the layout
+   math already paid for that strip's height. */
+#results-list.grid {
   position: relative; display: block; min-width: 0;
   padding: 14px 16px;
 }
-.mosaic-tile {
+.grid-tile {
   position: absolute; top: 0; left: 0; overflow: hidden;
   border-radius: 8px;
   /* An inset ring rather than a border: a border would consume 2px of the
@@ -617,16 +592,16 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
   background: var(--surface);
   transition: box-shadow .12s, opacity .12s;
 }
-.mosaic-tile:hover { box-shadow: inset 0 0 0 1px var(--border2), var(--shadow); z-index: 2; }
-.mosaic-tile.is-hidden-item { opacity: .45; }
-.mosaic-tile.is-hidden-item:hover { opacity: .8; }
+.grid-tile:hover { box-shadow: inset 0 0 0 1px var(--border2), var(--shadow); z-index: 2; }
+.grid-tile.is-hidden-item { opacity: .45; }
+.grid-tile.is-hidden-item:hover { opacity: .8; }
 .mt-link { display: block; text-decoration: none; height: 100%; }
 .mt-img { display: block; position: relative; overflow: hidden; }
 .mt-img img { width: 100%; height: 100%; object-fit: cover; display: block; position: relative; z-index: 1; }
-.mosaic-tile .thumb-fallback { font-size: 30px; }
+.grid-tile .thumb-fallback { font-size: 30px; }
 .mt-cap {
   display: flex; flex-direction: column; justify-content: center; gap: 2px;
-  height: var(--m-cap, 42px); padding: 0 8px; overflow: hidden;
+  height: var(--cap-h, 42px); padding: 0 8px; overflow: hidden;
   border-top: 1px solid var(--border);
 }
 .mt-title { font-size: 11.5px; line-height: 1.3; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -638,11 +613,11 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
   font-family: var(--mono); font-size: 10px; color: var(--text3);
 }
 .mt-stats .cs { display: inline-flex; align-items: center; gap: 3px; }
-.mosaic-tile .card-actions { top: 6px; right: 6px; }
+.grid-tile .card-actions { top: 6px; right: 6px; }
 .act-btn.icon-only { padding: 5px; border-radius: 4px; }
-.mosaic-tile:hover .card-actions, .mosaic-tile:focus-within .card-actions { opacity: 1; }
+.grid-tile:hover .card-actions, .grid-tile:focus-within .card-actions { opacity: 1; }
 /* Skeletons flow inline — they are not positioned by a layout function. */
-.mosaic-skel.skel {
+.grid-skel.skel {
   display: inline-block; vertical-align: top; border-radius: 8px;
   margin: 0 8px 8px 0;
 }
@@ -967,10 +942,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
         <button data-view="dense" type="button" title="Dense list" aria-label="Dense list view">
           <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="2.2" rx="1" fill="currentColor"/><rect x="2" y="6.9" width="12" height="2.2" rx="1" fill="currentColor"/><rect x="2" y="10.8" width="12" height="2.2" rx="1" fill="currentColor"/></svg>
         </button>
-        <button data-view="gallery" type="button" title="Large thumbnails" aria-label="Gallery view">
-          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5.2" height="5.2" rx="1" fill="currentColor"/><rect x="8.8" y="2" width="5.2" height="5.2" rx="1" fill="currentColor"/><rect x="2" y="8.8" width="5.2" height="5.2" rx="1" fill="currentColor"/><rect x="8.8" y="8.8" width="5.2" height="5.2" rx="1" fill="currentColor"/></svg>
-        </button>
-        <button data-view="masonry" type="button" title="Mosaic — equal columns, cropped to 3:4 / 1:1 / 4:3" aria-label="Mosaic view">
+        <button data-view="grid" type="button" title="Grid" aria-label="Grid view">
           <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="3.6" height="6.6" rx="1" fill="currentColor"/><rect x="6.2" y="2" width="3.6" height="4.4" rx="1" fill="currentColor"/><rect x="10.4" y="2" width="3.6" height="8.2" rx="1" fill="currentColor"/><rect x="2" y="9.4" width="3.6" height="4.6" rx="1" fill="currentColor"/><rect x="6.2" y="7.2" width="3.6" height="6.8" rx="1" fill="currentColor"/><rect x="10.4" y="11" width="3.6" height="3" rx="1" fill="currentColor"/></svg>
         </button>
       </div>
@@ -1058,16 +1030,17 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
   const LS_PREFIX = 'hfsearch:opt1:';
   const HF_BASE = 'https://huggingface.co/api';
   const PAGE_SIZE = 50;
-  const TARGET_VISIBLE = 30;
-  const MAX_FILL_ROUNDS = 12;
+  const TARGET_VISIBLE = 30;    // comfortable first screen
+  const MIN_VISIBLE = 10;       // never settle for fewer than this while more exist upstream
+  const MAX_FILL_ROUNDS = 12;   // fetch rounds spent reaching TARGET_VISIBLE
+  const MAX_FLOOR_ROUNDS = 40;  // further rounds allowed to reach MIN_VISIBLE
   const DISPLAY_TAGS = 3;
   const SENTINEL_MARGIN = 400;   // px; keep in sync with the observer rootMargin
-  const VALID_VIEWS = ['dense', 'gallery', 'masonry'];
-  const MOSAIC_VIEWS = ['masonry'];
+  const VALID_VIEWS = ['dense', 'grid'];
 
-  /* Tile budget for the mosaic layout. `target` is the nominal column width;
+  /* Tile budget for the grid layout. `target` is the nominal column width;
      the columns then flex to fill the container exactly. */
-  const MOSAIC = {
+  const GRID = {
     gap: 10,
     captionH: 42,     // fixed caption strip under every image; the layout pays for it
     defaultAR: 1,     // unknown / broken image → square, same as a placeholder
@@ -1079,18 +1052,14 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
   };
 
   /* Every tile renders at one of exactly three ratios and is cropped into it by
-     `object-fit: cover`. This is THE constraint that makes the grid read as a
-     grid, and it replaces three increasingly elaborate layout algorithms that
-     each tried to make native ratios look even and couldn't: a 1:5 chart or a
-     21:9 banner will always either claim five times its neighbours' height or
-     leave a hole beside itself. Bounding the ratio bounds the height — with a
-     fixed column width these three give a 1.78× span between the tallest and
-     shortest tile, which is roughly what Google Images shows. */
+     `object-fit: cover`. This is the constraint that makes the grid read as a
+     grid: bounding the ratio bounds the height, so with one fixed column width
+     the tallest tile is only 1.78× the shortest — roughly the span Google
+     Images shows. Honouring a native ratio instead means a 1:5 chart claims
+     five times its neighbours' height and a 21:9 banner leaves a hole beside
+     itself, and no amount of layout cleverness recovers from that. */
   const TILE_RATIOS = [3 / 4, 1, 4 / 3];
   const LOG_TILE_RATIOS = TILE_RATIOS.map(Math.log);
-
-  // Views that shipped in earlier builds, and where their users land now.
-  const RETIRED_VIEWS = { mosaic: 'masonry', bsp: 'masonry', stacked: 'masonry' };
 
   const SORT_PARAM = {
     trending: 'trendingScore',
@@ -1151,7 +1120,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     excluded: new Set(),
     showHidden: false,
     collapsed: new Set(),
-    view: 'dense',     // 'dense' | 'gallery' | 'masonry'
+    view: 'dense',     // 'dense' | 'grid'
     withImageOnly: false,
   };
 
@@ -1177,7 +1146,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     brokenThumbs.add(id);
     if (!state.withImageOnly) return;   // nothing to re-filter
     clearTimeout(brokenTimer);
-    brokenTimer = setTimeout(() => { brokenTimer = 0; render(); }, 200);
+    brokenTimer = setTimeout(() => { brokenTimer = 0; render(); ensureFloor(); }, 200);
   }
 
   /* ── DOM helpers ──────────────────────────────────── */
@@ -1201,10 +1170,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     const sp = lsGetRaw('sort'); if (sp) state.sort = normalizeSort(sp);
     const tp = lsGetRaw('type'); if (tp) state.type = normalizeType(tp);
     hfToken = lsGetRaw('token') || '';
-    // 'mosaic' (quantized cells), 'bsp' (partition) and 'stacked' (justified
-    // rows) were all retired in favour of the one cropped-ratio mosaic.
-    const rawView = lsGetRaw('view');
-    const vw = RETIRED_VIEWS[rawView] || rawView;
+    const vw = lsGetRaw('view');
     if (VALID_VIEWS.includes(vw)) state.view = vw;
     state.withImageOnly = lsGetRaw('withImageOnly') === '1';
     const pl = lsGet('pipelines'); if (Array.isArray(pl)) pl.forEach((t) => state.pipelines.add(t));
@@ -1537,14 +1503,45 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     maybeShowHint();
   }
 
-  async function fillToTarget(myGen) {
+  /* Page until `floor` results survive filtering, or the streams run dry.
+     visibleCount() counts what the user will actually see, so with "with
+     preview image only" on, a repo that ships no preview — or whose preview we
+     have watched fail — does not count toward the floor. Returns false when a
+     newer generation superseded this one. */
+  async function fillUntil(myGen, floor, maxRounds) {
     let rounds = 0;
-    while (rounds++ < MAX_FILL_ROUNDS) {
+    while (rounds++ < maxRounds) {
+      if (visibleCount() >= floor) break;
       const streams = activeStreams().filter((s) => streamHasMore(s) && !buffers[s].loading);
       if (!streams.length) break;
       await Promise.allSettled(streams.map((s) => fetchNext(s)));
-      if (myGen !== generation) return;
-      if (visibleCount() >= TARGET_VISIBLE) break;
+      if (myGen !== generation) return false;
+    }
+    return true;
+  }
+
+  async function fillToTarget(myGen) {
+    if (!(await fillUntil(myGen, TARGET_VISIBLE, MAX_FILL_ROUNDS))) return;
+    // A narrow facet combination can filter out most of a 50-item page, so a
+    // full screen is not always affordable within MAX_FILL_ROUNDS. The floor
+    // is: keep paging, more patiently, rather than strand the user on three
+    // results while more are available upstream.
+    await fillUntil(myGen, MIN_VISIBLE, MAX_FLOOR_ROUNDS);
+  }
+
+  /* A preview is only known to be broken once its <img> has failed, which is
+     after the render that placed it. With "with preview image only" on, that
+     can drop the count below the floor after the page has already settled. */
+  let floorFilling = false;
+  async function ensureFloor() {
+    if (floorFilling || anyLoading() || isRateLimited()) return;
+    if (visibleCount() >= MIN_VISIBLE || !hasMore()) return;
+    const myGen = generation;
+    floorFilling = true;
+    try {
+      if (await fillUntil(myGen, MIN_VISIBLE, MAX_FLOOR_ROUNDS)) render();
+    } finally {
+      floorFilling = false;
     }
   }
 
@@ -1714,7 +1711,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
       view.display.forEach((r) => { renderedIds.add(r.item.id); frag.appendChild(buildItem(r)); });
       list.appendChild(frag);
     }
-    layoutMosaic();
+    layoutGrid();
     updateEmptyState(view);
   }
 
@@ -1731,7 +1728,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
       frag.appendChild(buildItem(r));
       added++;
     }
-    if (added) { list.appendChild(frag); layoutMosaic(); }
+    if (added) { list.appendChild(frag); layoutGrid(); }
     updateEmptyState(view);
   }
 
@@ -1748,15 +1745,13 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     if (state.type === 'dataset') return 'datasets';
     return 'models or datasets';
   }
-  function isMosaic() { return MOSAIC_VIEWS.includes(state.view); }
+  function isGrid() { return state.view === 'grid'; }
 
   function buildItem(r) {
-    if (state.view === 'gallery') return buildCard(r);
-    if (isMosaic()) return buildTile(r);
-    return buildRow(r);
+    return isGrid() ? buildTile(r) : buildRow(r);
   }
 
-  /* ── Mosaic tiles ─────────────────────────────────────
+  /* ── Grid tiles ─────────────────────────────────────
      Natural aspect ratios are only known once an image decodes, so tiles start
      as single square cells and re-shape as ratios arrive. The cache outlives
      re-renders, so filtering/sorting doesn't re-flash to squares. */
@@ -1766,9 +1761,9 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
      square and the choice doesn't favour landscape. Anything past the ends —
      a 21:9 banner, a 1:5 chart — clamps to the end bucket and gets cropped. */
   function snapAR(ar) {
-    if (!(ar > 0) || !isFinite(ar)) return MOSAIC.defaultAR;
+    if (!(ar > 0) || !isFinite(ar)) return GRID.defaultAR;
     const l = Math.log(ar);
-    let best = MOSAIC.defaultAR, bestD = Infinity;
+    let best = GRID.defaultAR, bestD = Infinity;
     for (let i = 0; i < TILE_RATIOS.length; i++) {
       const d = Math.abs(l - LOG_TILE_RATIOS[i]);
       if (d < bestD) { bestD = d; best = TILE_RATIOS[i]; }
@@ -1784,7 +1779,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     const { item, hiddenByMute, hiddenByWord } = r;
     const isHidden = hiddenByMute || hiddenByWord;
     const li = document.createElement('li');
-    li.className = 'mosaic-tile' + (isHidden ? ' is-hidden-item' : '');
+    li.className = 'grid-tile' + (isHidden ? ' is-hidden-item' : '');
     li.dataset.author = item.author;
     li.dataset.id = item.id;
 
@@ -1794,9 +1789,9 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     const href = item.type === 'dataset'
       ? 'https://huggingface.co/datasets/' + item.id
       : 'https://huggingface.co/' + item.id;
-    // Only a real image from the repo gets a shaped tile. Repos without one
-    // would otherwise fall back to HF's 1200×648 social card and claim a
-    // landscape slot for what is really a placeholder, so they stay 1:1.
+    // Only a real image from the repo gets a thumbnail. HF's generated 1200×648
+    // social card is not one, so a repo without its own image renders as a
+    // gradient placeholder rather than claiming a slot with a stock banner.
     const tu = item.thumbFile ? thumbUrl(item) : null;
     if (!tu) li.dataset.noimg = '1';
     const initial = escHtml(item.name[0] || item.author[0] || '?');
@@ -1837,37 +1832,33 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
       const record = (ar) => {
         if (arCache.get(item.id) === ar) return;
         arCache.set(item.id, ar);
-        scheduleMosaicLayout();
+        scheduleGridLayout();
       };
       img.addEventListener('load', () => {
         if (img.naturalWidth && img.naturalHeight) record(img.naturalWidth / img.naturalHeight);
       });
-      img.addEventListener('error', () => { img.remove(); record(MOSAIC.defaultAR); noteBrokenThumb(item.id); });
+      img.addEventListener('error', () => { img.remove(); record(GRID.defaultAR); noteBrokenThumb(item.id); });
       observeThumb(img);
     }
     return li;
   }
 
-  /* ── Mosaic geometry ──────────────────────────────────
+  /* ── Grid geometry ────────────────────────────────────
      One pure layout function: no DOM, no timers, no randomness.
        layoutMasonry(items, opts) -> { height, tiles: [{ id, x, y, w, imgH }] }
      with items [{ id, ar }] and opts { width, gap, target, captionH }. A tile's
      full box is w × (imgH + captionH); the layout has already paid for the
-     caption. Callers pass ratios already snapped by snapAR(), so `ar` is one of
-     TILE_RATIOS and imgH can only take three values for a given column width —
-     that bound is what the layout leans on instead of the aspect-fitting,
-     size-banding and squareness-boosting machinery it used to need. */
+     caption. Callers pass ratios snapped by snapAR(), so `ar` is one of
+     TILE_RATIOS and imgH takes one of three values for a given column width. */
 
     /**
-   * layoutMasonry — fluid column masonry (demo 04).
+   * layoutMasonry — fluid column masonry.
    *
    * Geometry
    *   cols  = clamp(round(width / opts.target), 1, MAX_COLS)
    *   colW  = (width - (cols-1)*gap) / cols            // columns FLEX to fill width exactly
-   *   Each item drops into the currently shortest column at its (snapped) aspect ratio:
-   *   imgH = colW / ar, tile height = imgH + captionH. One greedy O(n·cols) pass, then an
-   *   LPT balancing pass re-drops the trailing BALANCE_TAIL_COLS·cols tiles tallest-first to
-   *   flatten the ragged bottom.
+   *   Each item drops into the currently shortest column at its snapped aspect ratio:
+   *   imgH = colW / ar, tile height = imgH + captionH. One greedy O(n·cols) pass.
    *
    * Placement stability
    *   Column assignment runs on UNIT-LESS ratios (gap/colW, captionH/colW) measured against a
@@ -1876,13 +1867,13 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
    *   only the pixels reflow: tiles never re-shuffle on resize (verified, 0 jumps over
    *   1000→1400px in 5px steps with 300 items). The pixel replay then uses the exact width.
    *
-   *   Appending items is prefix-stable EXCEPT for the balancing pass, which re-drops the last
-   *   BALANCE_TAIL_COLS·cols tiles. Appending a page therefore reshuffles only the trailing
-   *   3·cols tiles of the previous page. Set BALANCE_TAIL_COLS = 0 for total append-stability,
-   *   at the cost of a raggeder bottom edge.
+   *   Assignment consumes items in input order and each one lands on whichever column is
+   *   shortest at that moment, so a prefix lays out identically whatever follows it:
+   *   appending a page cannot move a tile already on screen (verified, 0 of 120 tiles move
+   *   when 80 are appended). The cost is a ragged bottom edge, which infinite scroll hides.
    *
-   * The only intentional distortion is the 1:1 boost: near-square images render TALLER than
-   * native by up to `opts.boost`×. Set opts.boost = 1 for zero distortion.
+   * Ratios are never stretched: imgH is always colW/ar, and the crop into `ar` is the
+   * browser's, via object-fit: cover.
    *
    * Tunables live in the CONSTANTS block at the top of the function.
    */
@@ -1893,17 +1884,8 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     const MIN_COL_W = 60;         // safety floor: drop a column rather than emit a sliver
     const MAX_TILE_H = 2.4;       // clamp: image box never taller than 2.4× its width
     const MIN_IMG_H = 24;         // absolute floor on an image box, in px
-    const BALANCE_TAIL_COLS = 0;  // LPT re-drop the last 3·cols tiles; 0 disables balancing
-    // (the demo's GAP_BUCKET/CAP_BUCKET quantisation is gone — the assignment now uses a
-    //  nominal column width derived from cols alone, which is exactly stable, not merely
-    //  stable-within-a-bucket. See "Placement stability" above.)
-    //
-    // There is deliberately no 1:1 size boost here. It existed to stop square tiles
-    // being visually swamped by 16:9 and 21:9 ones; snapping every ratio to
-    // TILE_RATIOS removes the disparity at the source, and a boost now would only
-    // render a genuine 1:1 image as a non-square box and crop it for nothing.
-    // MAX_TILE_H is likewise unreachable for snapped input (3:4 gives 1.33) and is
-    // kept solely so the function stays total on an unsnapped `ar`.
+    // MAX_TILE_H and MIN_IMG_H are out of reach for snapped input (3:4 is the tallest
+    // ratio there is, at 1.33) and exist so the function stays total on any `ar`.
     // ─────────────────────────────────────────────────────────────────────────
 
     const out = { height: 0, tiles: [] };
@@ -1947,45 +1929,16 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     const capR = capH / nomColW;
 
     const H = new Float64Array(cols);                    // unit-less column heights
-    const tops = [];
-    for (let i = 0; i < cols; i++) tops.push([]);
     const entries = new Array(n);
-    let seq = 0;
 
     for (let i = 0; i < n; i++) {
       const it = items[i];
       const hn = 1 / renderAR(it) + capR;
       let col = 0, best = Infinity;
       for (let k = 0; k < cols; k++) if (H[k] < best - 1e-9) { best = H[k]; col = k; }
-      const y = H[col];
-      const e = { it, col, hn, seq: seq++, y };
-      entries[i] = e;
-      H[col] = y + hn + gr; tops[col].push(e);
+      entries[i] = { it, col };
+      H[col] += hn + gr;
     }
-
-    // Balancing pass: lift the trailing tiles off every column and re-drop them
-    // tallest-first into whichever column is shortest (LPT scheduling) — the classic fix
-    // for a ragged bottom. Only the tail moves, so order drift stays local.
-    if (BALANCE_TAIL_COLS > 0 && cols > 1 && n > cols) {
-      const K = Math.min(n - 1, cols * BALANCE_TAIL_COLS);
-      const bySeq = entries.slice().sort((a, b) => b.seq - a.seq);
-      const pool = [];
-      for (let i = 0; i < bySeq.length && pool.length < K; i++) {
-        const e = bySeq[i], st = tops[e.col];
-        if (st[st.length - 1] !== e) break;   // only lift tiles that are still on top
-        st.pop(); H[e.col] = e.y; pool.push(e);
-      }
-      pool.sort((a, b) => (b.hn - a.hn) || (a.seq - b.seq));  // longest first, ties by input order
-      for (let i = 0; i < pool.length; i++) {
-        const e = pool[i];
-        let col = 0, best = Infinity;
-        for (let k = 0; k < cols; k++) if (H[k] < best - 1e-9) { best = H[k]; col = k; }
-        e.col = col; e.y = H[col]; e.seq = seq++;
-        H[col] = e.y + e.hn + gr; tops[col].push(e);
-      }
-    }
-
-    entries.sort((a, b) => a.seq - b.seq);   // replay in per-column stacking order
 
     // ── phase 2: exact pixel replay ────────────────────────────────────────────
     const Hp = new Float64Array(cols);
@@ -2009,20 +1962,19 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     return out;
   }
 
-  /* Masonry drops each tile into the shortest column in input order, so a
-     prefix of the list always lays out the same way whatever follows it.
-     Appending a page cannot move anything already on screen, which is why the
-     frozen-segment machinery the row-based layouts needed is gone. */
-  function layoutMosaic() {
-    if (!isMosaic()) return;
+  /* Each tile drops into the shortest column in input order, so a prefix of the
+     list always lays out the same way whatever follows it: appending a page
+     cannot move anything already on screen. */
+  function layoutGrid() {
+    if (!isGrid()) return;
     const list = byId('results-list');
-    const tiles = qsa('.mosaic-tile', list);
+    const tiles = qsa('.grid-tile', list);
     const cs = getComputedStyle(list);
     const padL = parseFloat(cs.paddingLeft) || 0;
     const padT = parseFloat(cs.paddingTop) || 0;
     const padB = parseFloat(cs.paddingBottom) || 0;
     const width = list.getBoundingClientRect().width - padL - (parseFloat(cs.paddingRight) || 0);
-    list.style.setProperty('--m-cap', MOSAIC.captionH + 'px');
+    list.style.setProperty('--cap-h', GRID.captionH + 'px');
     if (!tiles.length || width <= 0) { list.style.height = ''; return; }
 
     const byIdMap = new Map();
@@ -2034,11 +1986,11 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     let out;
     try {
       out = layoutMasonry(items, {
-        width, gap: MOSAIC.gap, target: MOSAIC.target, captionH: MOSAIC.captionH,
+        width, gap: GRID.gap, target: GRID.target, captionH: GRID.captionH,
       });
     } catch (err) {
       // A layout bug must not take the page down — leave the tiles unpositioned.
-      console.error('mosaic layout failed', err);
+      console.error('grid layout failed', err);
       return;
     }
     if (!out || !Array.isArray(out.tiles)) return;
@@ -2050,7 +2002,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
       el.style.left = Math.round(padL + t.x) + 'px';
       el.style.top = Math.round(padT + t.y) + 'px';
       el.style.width = Math.round(t.w) + 'px';
-      el.style.height = (imgH + MOSAIC.captionH) + 'px';
+      el.style.height = (imgH + GRID.captionH) + 'px';
       el.querySelector('.mt-img').style.height = imgH + 'px';
     }
     list.style.height = Math.round(padT + out.height + padB) + 'px';
@@ -2058,101 +2010,29 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 
   // rAF is suspended in background tabs, so a layout scheduled there would
   // never run; the timeout is the fallback that keeps a hidden tab correct.
-  let mosaicRAF = 0, mosaicTimer = 0;
-  function scheduleMosaicLayout() {
-    if (!isMosaic() || mosaicRAF) return;
+  let gridRAF = 0, gridTimer = 0;
+  function scheduleGridLayout() {
+    if (!isGrid() || gridRAF) return;
     const run = () => {
-      cancelAnimationFrame(mosaicRAF); clearTimeout(mosaicTimer);
-      mosaicRAF = 0; mosaicTimer = 0;
-      layoutMosaic();
+      cancelAnimationFrame(gridRAF); clearTimeout(gridTimer);
+      gridRAF = 0; gridTimer = 0;
+      layoutGrid();
     };
-    mosaicRAF = requestAnimationFrame(run);
-    mosaicTimer = setTimeout(run, 250);
+    gridRAF = requestAnimationFrame(run);
+    gridTimer = setTimeout(run, 250);
   }
-  function initMosaicResize() {
+  function initGridResize() {
     const wrap = byId('results-wrap');
     if (typeof ResizeObserver !== 'function') {
-      window.addEventListener('resize', scheduleMosaicLayout);
+      window.addEventListener('resize', scheduleGridLayout);
       return;
     }
     // Layout depends only on the container width, so a re-run at an unchanged
     // width writes identical values and cannot feed itself another observation.
-    new ResizeObserver(scheduleMosaicLayout).observe(wrap);
+    new ResizeObserver(scheduleGridLayout).observe(wrap);
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) scheduleMosaicLayout();
+      if (!document.hidden) scheduleGridLayout();
     });
-  }
-
-  function buildCard(r) {
-    const { item, hiddenByMute, hiddenByWord } = r;
-    const isHidden = hiddenByMute || hiddenByWord;
-    const li = document.createElement('li');
-    li.className = 'result-card' + (isHidden ? ' is-hidden-item' : '');
-    li.dataset.author = item.author;
-    li.dataset.id = item.id;
-
-    const displayableTags = (item.tags || []).filter((t) =>
-      !HIDDEN_TAG_PREFIXES.some((p) => t.startsWith(p)) && !HIDDEN_TAGS.has(t)
-    );
-    const shownTags = displayableTags.slice(0, DISPLAY_TAGS);
-    const moreTags = displayableTags.length - shownTags.length;
-    const tagPills = shownTags.map((t) => `<span class="tag-pill">${escHtml(t)}</span>`).join('') +
-      (moreTags > 0 ? `<span class="tag-pill more">+${moreTags}</span>` : '');
-
-    let badges = '';
-    if (item.pipeline_tag) badges += `<span class="badge badge-pipeline">${escHtml(item.pipeline_tag.replace(/-/g, ' '))}</span>`;
-    if (item.library_name) badges += `<span class="badge badge-library">${escHtml(item.library_name)}</span>`;
-    if (item.type === 'dataset') badges += `<span class="badge badge-type">dataset</span>`;
-
-    const isMuted = state.muted.has(item.author);
-    const muteLabel = isMuted ? 'Unmute' : 'Mute author';
-    const muteBtnClass = isMuted ? 'act-btn unmute-row' : 'act-btn';
-    const href = item.type === 'dataset'
-      ? 'https://huggingface.co/datasets/' + item.id
-      : 'https://huggingface.co/' + item.id;
-    const tu = thumbUrl(item);
-    const initial = escHtml(item.name[0] || item.author[0] || '?');
-
-    li.innerHTML = `
-      <a class="card-banner" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" title="${escHtml(item.id)}" style="background:${gradientFor(item)}">
-        <span class="thumb-fallback">${initial}</span>
-        <img decoding="async" alt="" data-src="${escHtml(tu)}">
-      </a>
-      <div class="card-actions">
-        <button type="button" class="${muteBtnClass}" data-action="mute" data-author="${escHtml(item.author)}" aria-label="${muteLabel} ${escHtml(item.author)}">
-          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="4" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 10.5c0-2.5 2-4 4.5-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>${isMuted ? '<path d="M9 7l2 2M11 7l-2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>' : '<path d="M8 8l3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>'}</svg>
-          ${muteLabel}
-        </button>
-      </div>
-      <div class="card-body">
-        <a class="card-title" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" title="${escHtml(item.id)}">
-          <span class="row-author">${escHtml(item.author)}</span><span class="row-name${item.gated ? ' gated' : ''}">${escHtml(item.name)}</span>
-        </a>
-        <div class="card-stats">
-          <span class="cs" title="Downloads"><svg class="stat-icon" width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 2v7M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>${fmtNum(item.downloads)}</span>
-          <span class="cs" title="Likes"><svg class="stat-icon" width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 11s-5-3.5-5-7a3 3 0 0 1 5-2.2A3 3 0 0 1 12 4c0 3.5-5 7-5 7z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>${fmtNum(item.likes)}</span>
-          <span class="cs cs-date" title="Updated ${escHtml(item.lastModified || '')}">${relDate(item.lastModified)}</span>
-        </div>
-        <div class="card-badges">${badges}</div>
-        <div class="card-tags" aria-label="Tags">${tagPills}</div>
-      </div>
-    `;
-
-    const muteBtn = li.querySelector('[data-action="mute"]');
-    muteBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const author = muteBtn.dataset.author;
-      if (state.muted.has(author)) state.muted.delete(author);
-      else state.muted.add(author);
-      saveBlocklist();
-      render();
-    });
-    const cardImg = li.querySelector('.card-banner img');
-    if (cardImg) {
-      cardImg.addEventListener('error', () => { cardImg.remove(); noteBrokenThumb(item.id); });
-      observeThumb(cardImg);
-    }
-    return li;
   }
 
   function buildRow(r) {
@@ -2374,27 +2254,16 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     byId('hidden-summary').innerHTML = '';
     byId('show-hidden-btn').style.display = 'none';
     let html = '';
-    if (isMosaic()) {
+    if (isGrid()) {
       list.style.height = '';
       // Same equal width and three heights the real tiles use, so the skeleton
       // doesn't promise a shape the loaded grid won't have.
-      const w = MOSAIC.target;
+      const w = GRID.target;
       const order = [1, 4 / 3, 3 / 4, 1, 3 / 4, 4 / 3, 1, 4 / 3];
       order.forEach((ar) => {
-        const h = Math.round(w / ar) + MOSAIC.captionH;
-        html += `<li class="mosaic-skel skel" style="width:${w}px;height:${h}px"></li>`;
+        const h = Math.round(w / ar) + GRID.captionH;
+        html += `<li class="grid-skel skel" style="width:${w}px;height:${h}px"></li>`;
       });
-    } else if (state.view === 'gallery') {
-      for (let i = 0; i < 8; i++) {
-        html += `<li class="result-card">
-          <div class="card-banner"><div class="skel" style="width:100%;height:100%"></div></div>
-          <div class="card-body">
-            <div class="skel" style="width:85%"></div>
-            <div class="skel" style="width:55%;height:9px"></div>
-            <div class="skel" style="width:70%;height:9px"></div>
-          </div>
-        </li>`;
-      }
     } else {
       for (let i = 0; i < 8; i++) {
         html += `<li class="skeleton-row">
@@ -2518,12 +2387,11 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
   }
   function hideThumbPreview() { byId('thumb-preview').classList.remove('visible'); }
 
-  /* ── View mode (dense list ⇄ gallery cards ⇄ mosaic) ── */
+  /* ── View mode (dense list ⇄ grid) ── */
   function applyView() {
     const list = byId('results-list');
-    list.classList.toggle('gallery', state.view === 'gallery');
-    list.classList.toggle('mosaic', isMosaic());
-    if (!isMosaic()) list.style.height = '';
+    list.classList.toggle('grid', isGrid());
+    if (!isGrid()) list.style.height = '';
     byId('results-colhead').style.display = state.view === 'dense' ? '' : 'none';
     qsa('#view-toggle button').forEach((b) => {
       const on = b.dataset.view === state.view;
@@ -2624,7 +2492,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     initFacetToggles();
     initColumnResize();
     initView();
-    initMosaicResize();
+    initGridResize();
 
     const searchBox = byId('search-box');
     const searchClear = byId('search-clear');
