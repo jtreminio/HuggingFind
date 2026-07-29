@@ -1095,20 +1095,29 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 
   // Canonical list of every Hugging Face pipeline tag (kebab-case, as used in pipeline_tag),
   // so the Pipeline facet offers all of them even when none are in the loaded results.
+  // Generative media pipelines, pinned to the top of the facet in this order —
+  // they're what this console gets used for, and they'd otherwise sink below
+  // whatever happens to be trending.
+  const PINNED_PIPELINES = [
+    'text-to-image', 'text-to-video', 'image-to-image',
+    'image-to-video', 'image-text-to-video', 'video-to-video',
+  ];
+
   const PIPELINE_TAGS = [
     // Multimodal
     'any-to-any', 'audio-text-to-text', 'image-text-to-text', 'visual-question-answering',
     'document-question-answering', 'video-text-to-text', 'visual-document-retrieval',
+    'image-text-to-image', 'image-text-to-video',
     // Computer Vision
     'depth-estimation', 'image-classification', 'object-detection', 'image-segmentation',
     'text-to-image', 'image-to-text', 'image-to-image', 'image-to-video',
-    'unconditional-image-generation', 'video-classification', 'text-to-video',
+    'unconditional-image-generation', 'video-classification', 'text-to-video', 'video-to-video',
     'zero-shot-image-classification', 'mask-generation', 'zero-shot-object-detection',
     'text-to-3d', 'image-to-3d', 'image-feature-extraction', 'keypoint-detection',
     // Natural Language Processing
     'text-classification', 'token-classification', 'table-question-answering', 'question-answering',
     'zero-shot-classification', 'translation', 'summarization', 'feature-extraction',
-    'text-generation', 'text2text-generation', 'fill-mask', 'sentence-similarity', 'text-ranking',
+    'text-generation', 'fill-mask', 'sentence-similarity', 'text-ranking',
     // Audio
     'text-to-speech', 'text-to-audio', 'automatic-speech-recognition', 'audio-to-audio',
     'audio-classification', 'voice-activity-detection',
@@ -1117,7 +1126,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     // Reinforcement Learning / Robotics
     'reinforcement-learning', 'robotics',
     // Other
-    'graph-machine-learning',
+    'graph-ml',
   ];
 
   /* ── State ────────────────────────────────────────── */
@@ -1147,6 +1156,18 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
   let rateLimitedUntil = 0;     // epoch ms; auto-pagination backs off until then
   let rlTimer = null;
   let renderedIds = new Set();  // ids currently in the DOM list (append-only paging)
+  const brokenThumbs = new Set();   // ids whose preview image failed to load
+  let brokenTimer = 0;
+
+  // Every view's <img> reports here when it errors. Each round of re-rendering
+  // drops the failures, so the candidate set only shrinks and this terminates.
+  function noteBrokenThumb(id) {
+    if (!id || brokenThumbs.has(id)) return;
+    brokenThumbs.add(id);
+    if (!state.withImageOnly) return;   // nothing to re-filter
+    clearTimeout(brokenTimer);
+    brokenTimer = setTimeout(() => { brokenTimer = 0; render(); }, 200);
+  }
 
   /* ── DOM helpers ──────────────────────────────────── */
   const byId = (id) => document.getElementById(id);
@@ -1425,8 +1446,12 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
   function matchesPipeline(item) { return state.pipelines.size === 0 || state.pipelines.has(item.pipeline_tag); }
   function matchesLibrary(item) { return state.libraries.size === 0 || state.libraries.has(item.library_name); }
   // A repo "has a preview image" only if it ships one itself — HF's generated
-  // social card is a placeholder and doesn't count.
-  function matchesImage(item) { return !state.withImageOnly || !!item.thumbFile; }
+  // social card is a placeholder and doesn't count. Listing the file isn't
+  // proof it can be fetched, though: LFS pointers, gated repos and moved paths
+  // all 404 at resolve time, so anything we've actually watched fail is out.
+  function matchesImage(item) {
+    return !state.withImageOnly || (!!item.thumbFile && !brokenThumbs.has(item.id));
+  }
   function isHiddenByMute(item) { return state.muted.has(item.author); }
   function isHiddenByWords(item) {
     if (state.excluded.size === 0) return false;
@@ -1668,7 +1693,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
       img.addEventListener('load', () => {
         if (img.naturalWidth && img.naturalHeight) record(img.naturalWidth / img.naturalHeight);
       });
-      img.addEventListener('error', () => { img.remove(); record(MOSAIC.defaultAR); });
+      img.addEventListener('error', () => { img.remove(); record(MOSAIC.defaultAR); noteBrokenThumb(item.id); });
       if (img.complete && img.naturalWidth) record(img.naturalWidth / img.naturalHeight);
     }
     return li;
@@ -2698,7 +2723,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
       render();
     });
     const cardImg = li.querySelector('.card-banner img');
-    if (cardImg) cardImg.addEventListener('error', () => cardImg.remove());
+    if (cardImg) cardImg.addEventListener('error', () => { cardImg.remove(); noteBrokenThumb(item.id); });
     return li;
   }
 
@@ -2777,7 +2802,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 
     const thumbEl = li.querySelector('.row-thumb');
     const thumbImg = thumbEl.querySelector('img');
-    thumbImg.addEventListener('error', () => thumbImg.remove()); // reveal gradient fallback
+    thumbImg.addEventListener('error', () => { thumbImg.remove(); noteBrokenThumb(item.id); }); // reveal gradient fallback
     thumbEl.addEventListener('mouseenter', () => showThumbPreview(thumbEl));
     thumbEl.addEventListener('mouseleave', hideThumbPreview);
     return li;
@@ -2798,11 +2823,18 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
     Object.keys(counts).forEach((tag) => { if (!seen.has(tag)) { entries.push([tag, counts[tag]]); seen.add(tag); } });
     state.pipelines.forEach((tag) => { if (!seen.has(tag)) { entries.push([tag, 0]); seen.add(tag); } });
 
-    // Selected first, then by count desc, then alphabetical.
+    // Selected first, then the pinned generative pipelines in their own order,
+    // then everything else by count desc, then alphabetical.
+    const rank = (tag) => {
+      const i = PINNED_PIPELINES.indexOf(tag);
+      return i === -1 ? PINNED_PIPELINES.length : i;
+    };
     entries.sort((a, b) => {
       const sa = state.pipelines.has(a[0]) ? 1 : 0;
       const sb = state.pipelines.has(b[0]) ? 1 : 0;
       if (sa !== sb) return sb - sa;
+      const ra = rank(a[0]), rb = rank(b[0]);
+      if (ra !== rb) return ra - rb;
       return b[1] - a[1] || a[0].localeCompare(b[0]);
     });
 
